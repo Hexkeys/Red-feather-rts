@@ -52,7 +52,7 @@ wss.on("connection",ws=>{
    if(room.players.size>=8){notice(ws,"This realm is full (8 players).");ws.close();return;}
    playerId="p"+nextId++;
    const color=["#b84a3a","#4778b8","#6d9b58","#a17ac2","#c08a36","#4b9b9b","#9b5478","#858c4b"][room.players.size];
-   const spawnX=(room.players.size-((room.players.size-1)/2))*18;
+   const spawnX=(room.players.size-3.5)*12;
    room.players.set(playerId,{ws,name,color});
    room.state.players[playerId]={id:playerId,name,color,gold:500,wood:350,food:300,stone:180,buildings:[],units:[],x:spawnX};
    ws.roomCode=code;ws.playerId=playerId;
