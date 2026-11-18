@@ -38,26 +38,26 @@ function notice(ws,text){send(ws,{type:"notice",text});}
 function distance(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
 function clamp(n,min,max){return Math.max(min,Math.min(max,n));}
 // Deterministic terrain aligned with the client-side continental map.
-function riverCenter(z){return Math.sin(z*.0042)*92+Math.sin(z*.011)*24-35;}
+function riverCenter(z){return Math.sin(z*.00105)*368+Math.sin(z*.00275)*96-140+Math.sin(z*.00048)*110;}
 function terrainHeight(x,z){
- const broad=Math.sin(x*.006+Math.sin(z*.004)*1.4)*Math.cos(z*.007)*13;
- const rolling=Math.sin(x*.019+z*.012)*Math.cos(z*.018-x*.009)*5.5+Math.sin(x*.034-z*.027)*2.2;
- const ridgeA=Math.max(0,1-Math.abs((x-330)+Math.sin(z*.006)*65)/185);
- const ridgeB=Math.max(0,1-Math.abs((x+390)-Math.sin(z*.005)*55)/155);
- const peaks=Math.pow(ridgeA,1.65)*(38+Math.max(0,Math.sin(z*.018))*72)+Math.pow(ridgeB,1.7)*(28+Math.max(0,Math.cos(z*.016))*64);
- const foothills=Math.max(0,1-Math.abs(x+80)/290)*Math.max(0,Math.sin(z*.009+1))*18;
+ const broad=Math.sin(x*.0015+Math.sin(z*.001)*1.4)*Math.cos(z*.00175)*48;
+ const rolling=Math.sin(x*.00475+z*.003)*Math.cos(z*.0045-x*.00225)*19+Math.sin(x*.0085-z*.00675)*8;
+ const ridgeA=Math.max(0,1-Math.abs((x-1320)+Math.sin(z*.0015)*260)/740);
+ const ridgeB=Math.max(0,1-Math.abs((x+1560)-Math.sin(z*.00125)*220)/620);
+ const peaks=Math.pow(ridgeA,1.65)*(150+Math.max(0,Math.sin(z*.0045))*210)+Math.pow(ridgeB,1.7)*(115+Math.max(0,Math.cos(z*.004))*185);
+ const foothills=Math.max(0,1-Math.abs(x+320)/1160)*Math.max(0,Math.sin(z*.00225+1))*62;
  const riverDist=Math.abs(x-riverCenter(z));
- return broad+rolling+peaks+foothills-Math.max(0,1-riverDist/88)*10-Math.max(0,1-riverDist/42)*4;
+ return broad+rolling+peaks+foothills-Math.max(0,1-riverDist/350)*35-Math.max(0,1-riverDist/155)*14;
 }
 function terrainAt(x,z){
  const riverDist=Math.abs(x-riverCenter(z));
- if(riverDist<19)return "river";
- if(Math.abs(z)<10||Math.abs(x)<8)return "road";
+ if(riverDist<68)return "river";
+ if(Math.abs(z)<34||Math.abs(x)<24)return "road";
  const h=terrainHeight(x,z);
- if(h>55)return "mountain";
- if(h>22)return "hill";
- if(Math.sin(x*.014+z*.009)>.35)return "forest";
- if(h< -8)return "marsh";
+ if(h>145)return "mountain";
+ if(h>48)return "hill";
+ if(Math.sin(x*.0035+z*.00225)>.28)return "forest";
+ if(h< -30)return "marsh";
  return "plains";
 }
 function terrainAttack(unit,target){
@@ -103,12 +103,12 @@ wss.on("connection",ws=>{
    if(Object.entries(cost).some(([k,v])=>me[k]<v)){notice(ws,"Not enough resources.");return;}
    const isBuilding=BUILDINGS.has(kind);
    const px=Number(msg.x),pz=Number(msg.z);
-   const item={id:"i"+nextId++,kind,x:isBuilding?clamp(Number.isFinite(px)?px:me.x,-585,585):clamp(me.x+clamp(Number.isFinite(px)?px:0,-5,5),-585,585),z:isBuilding?clamp(Number.isFinite(pz)?pz:0,-435,435):clamp(Number.isFinite(pz)?pz:0,-5,5),owner:playerId};
+   const item={id:"i"+nextId++,kind,x:isBuilding?clamp(Number.isFinite(px)?px:me.x,-2370,2370):clamp(me.x+clamp(Number.isFinite(px)?px:0,-5,5),-2370,2370),z:isBuilding?clamp(Number.isFinite(pz)?pz:0,-1770,1770):clamp(Number.isFinite(pz)?pz:0,-5,5),owner:playerId};
    if(isBuilding){
     if(kind==="wall"){
      const x2=Number(msg.x2),z2=Number(msg.z2);
      if(!Number.isFinite(x2)||!Number.isFinite(z2)){notice(ws,"Choose both ends of the wall.");return;}
-     item.x2=clamp(x2,-585,585);item.z2=clamp(z2,-435,435);
+     item.x2=clamp(x2,-2370,2370);item.z2=clamp(z2,-1770,1770);
      const length=distance(item,{x:item.x2,z:item.z2});
      if(length<3||length>32){notice(ws,"Wall length must be between 3 and 32 metres.");return;}
      const midpoint={x:(item.x+item.x2)/2,z:(item.z+item.z2)/2};
@@ -130,7 +130,7 @@ wss.on("connection",ws=>{
   }
   if(msg.type==="move"){
    const unit=me.units.find(u=>u.id===msg.id);
-   if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){unit.tx=clamp(msg.x,-595,595);unit.tz=clamp(msg.z,-445,445);return;}
+   if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){unit.tx=clamp(msg.x,-2390,2390);unit.tz=clamp(msg.z,-1790,1790);return;}
   }
  });
  ws.on("close",()=>{
@@ -168,7 +168,7 @@ setInterval(()=>{
    let target=null,best=Infinity;for(const enemy of items){if(enemy.owner===p.id||enemy.category!=="unit"||enemy.hp<=0)continue;const d=distance(tower,enemy);if(d<=tower.range&&d<best){best=d;target=enemy;}}
    if(target){const owner=room.state.players[target.owner];const unit=owner?.units.find(u=>u.id===target.id);if(unit)unit.hp-=tower.damage*dt*(terrainAt(unit.x,unit.z)==="forest"?.82:1);}
   }
-  const objectives=[{x:-260,z:0},{x:0,z:-250},{x:260,z:0}];
+  const objectives=[{x:-1050,z:0},{x:0,z:-1050},{x:1050,z:0}];
   for(const o of objectives){
    const presence=players.map(p=>({p,n:p.units.filter(u=>distance(u,o)<7).length})).filter(v=>v.n>0).sort((a,b)=>b.n-a.n);
    if(presence.length&&(!presence[1]||presence[0].n>presence[1].n)){presence[0].p.score=(presence[0].p.score||0)+dt*presence[0].n*.35;presence[0].p.gold+=dt*.35;}
