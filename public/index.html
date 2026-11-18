@@ -80,7 +80,7 @@ function joinRealm(){
 joinButton.addEventListener('click',joinRealm);
 document.querySelector('#roomcode').addEventListener('keydown',e=>{if(e.key==='Enter')joinRealm()});
 document.querySelector('#playername').addEventListener('keydown',e=>{if(e.key==='Enter')joinRealm()});
-const BUILD_KINDS=new Set(['house','farm','lumberyard','quarry','market','barracks','tower','dock']);let placingKind=null,placementPreview=null,placementPoint={x:0,z:0},placementValid=false;
+const BUILD_KINDS=new Set(['house','farm','lumberyard','quarry','market','barracks','archery','stable','siegeworkshop','tower','dock']);let placingKind=null,placementPreview=null,placementPoint={x:0,z:0},placementValid=false;
 function startPlacement(kind){
  if(!myId){notice('Join a realm first.');return}
  placingKind=kind;
