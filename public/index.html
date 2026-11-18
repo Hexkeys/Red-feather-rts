@@ -62,7 +62,7 @@ function createGrassField(){
   indices.push(base,base+1,base+2);
  }
  bladeGeo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
- bladeGeo.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));bladeGeo.setIndex(indices);
+ bladeGeo.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));bladeGeo.setIndex(indices);bladeGeo.computeVertexNormals();
  const count=isMobile?7600:22000;
  const mesh=new THREE.InstancedMesh(bladeGeo,new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,side:THREE.DoubleSide}),count);
  mesh.name='procedural-grass';mesh.castShadow=false;mesh.receiveShadow=false;mesh.frustumCulled=false;
