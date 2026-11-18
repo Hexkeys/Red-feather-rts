@@ -12,7 +12,7 @@ const rooms = new Map();
 let nextId = 1;
 
 const COSTS = {
-  house:{wood:90}, farm:{wood:65}, barracks:{wood:120,stone:35}, tower:{wood:55,stone:70}, dock:{wood:150,stone:40},
+  house:{wood:90}, farm:{wood:65}, lumberyard:{wood:80}, quarry:{wood:80,stone:25}, market:{wood:100,stone:40}, barracks:{wood:120,stone:35}, tower:{wood:55,stone:70}, dock:{wood:150,stone:40},
   soldier:{gold:45,food:35}, archer:{gold:55,wood:15,food:30}, knight:{gold:110,food:55},
   pikeman:{gold:65,wood:10,food:40}, siege:{gold:160,wood:90}, ship:{gold:130,wood:120,food:25}
 };
@@ -24,7 +24,7 @@ const UNIT_STATS = {
   siege:{hp:220,damage:38,range:10,speed:1.5},
   ship:{hp:260,damage:25,range:9,speed:2.4}
 };
-const BUILDING_STATS = {house:{hp:260},farm:{hp:180},barracks:{hp:500},tower:{hp:420,damage:18,range:11},dock:{hp:450}};
+const BUILDING_STATS = {house:{hp:260},farm:{hp:180},lumberyard:{hp:220},quarry:{hp:260},market:{hp:300},barracks:{hp:500},tower:{hp:420,damage:18,range:11},dock:{hp:450}};
 const BUILDINGS = new Set(Object.keys(BUILDING_STATS));
 const UNITS = new Set(Object.keys(UNIT_STATS));
 
@@ -82,8 +82,7 @@ wss.on("connection",ws=>{
    const kind=String(msg.kind||""),cost=COSTS[kind];if(!cost)return;
    const supply=8+me.buildings.filter(b=>b.kind==="house").length*4;
    if(UNITS.has(kind)&&me.units.length>=supply){notice(ws,"Army supply is full. Build houses to support more units.");return;}
-   if(UNITS.has(kind)&&!me.buildings.some(b=>b.kind==="barracks")&&!(kind==="ship"&&me.buildings.some(b=>b.kind==="dock"))){notice(ws,"Build a barracks before recruiting an army.");return;}
-   if(kind==="ship"&&!me.buildings.some(b=>b.kind==="dock")){notice(ws,"Build a harbor before commissioning a ship.");return;}
+   if(UNITS.has(kind)){const facility=me.buildings.find(b=>b.id===String(msg.buildingId));const required=kind==="ship"?"dock":"barracks";if(!facility||facility.kind!==required){notice(ws,"Select your "+(required==="dock"?"Harbor":"Barracks")+" to recruit this unit.");return;}}
    if(Object.entries(cost).some(([k,v])=>me[k]<v)){notice(ws,"Not enough resources.");return;}
    const isBuilding=BUILDINGS.has(kind);
    const px=Number(msg.x),pz=Number(msg.z);
@@ -121,8 +120,11 @@ setInterval(()=>{
   const players=Object.values(room.state.players);
   for(const p of players){
    const farms=p.buildings.filter(b=>b.kind==="farm").length;
-   const houses=p.buildings.filter(b=>b.kind==="house").length;
-   p.gold+=1+Math.floor(houses*.5);p.wood+=.65;p.food+=.8+farms*.7;p.stone+=.45;
+   const lumberyards=p.buildings.filter(b=>b.kind==="lumberyard").length;
+   const quarries=p.buildings.filter(b=>b.kind==="quarry").length;
+   const markets=p.buildings.filter(b=>b.kind==="market").length;
+   // No free passive income: production comes from the matching economy buildings.
+   p.food+=farms*.55;p.wood+=lumberyards*.45;p.stone+=quarries*.3;p.gold+=markets*.3;
    if(p.units.length)p.food=Math.max(0,p.food-p.units.length*.018);
   }
   const items=allItems(room);
