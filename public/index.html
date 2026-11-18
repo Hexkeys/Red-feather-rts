@@ -18,7 +18,7 @@
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-const scene=new THREE.Scene();scene.background=new THREE.Color(0x9ab8c2);scene.fog=new THREE.Fog(0x9ab8c2,55,115);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x9ab8c2);scene.fog=null;
 const camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.1,200);camera.position.set(27,30,34);
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;document.querySelector('#game').appendChild(renderer.domElement);
 scene.add(new THREE.HemisphereLight(0xe5f1ff,0x65734c,2));const sun=new THREE.DirectionalLight(0xffe2b0,2.2);sun.position.set(-25,45,20);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);scene.add(sun);
