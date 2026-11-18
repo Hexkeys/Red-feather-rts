@@ -37,16 +37,33 @@ function snapshot(room){return{type:"state",players:room.state.players,chat:room
 function notice(ws,text){send(ws,{type:"notice",text});}
 function distance(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
 function clamp(n,min,max){return Math.max(min,Math.min(max,n));}
-// Deterministic tactical terrain shared by all players.
+// Deterministic terrain aligned with the client-side continental map.
+function riverCenter(z){return Math.sin(z*.0042)*92+Math.sin(z*.011)*24-35;}
+function terrainHeight(x,z){
+ const broad=Math.sin(x*.006+Math.sin(z*.004)*1.4)*Math.cos(z*.007)*13;
+ const rolling=Math.sin(x*.019+z*.012)*Math.cos(z*.018-x*.009)*5.5+Math.sin(x*.034-z*.027)*2.2;
+ const ridgeA=Math.max(0,1-Math.abs((x-330)+Math.sin(z*.006)*65)/185);
+ const ridgeB=Math.max(0,1-Math.abs((x+390)-Math.sin(z*.005)*55)/155);
+ const peaks=Math.pow(ridgeA,1.65)*(38+Math.max(0,Math.sin(z*.018))*72)+Math.pow(ridgeB,1.7)*(28+Math.max(0,Math.cos(z*.016))*64);
+ const foothills=Math.max(0,1-Math.abs(x+80)/290)*Math.max(0,Math.sin(z*.009+1))*18;
+ const riverDist=Math.abs(x-riverCenter(z));
+ return broad+rolling+peaks+foothills-Math.max(0,1-riverDist/88)*10-Math.max(0,1-riverDist/42)*4;
+}
 function terrainAt(x,z){
- if(Math.abs(z)<2.2||Math.abs(x)<1.8)return "road";
- const a=Math.sin((x+18)*.19)*Math.cos((z-7)*.17),b=Math.cos((x-9)*.13+z*.11);
- if(a>.56)return "forest";if(b>.72)return "hill";if(a<-.58&&Math.sin(z*.22)>.1)return "marsh";return "plains";
+ const riverDist=Math.abs(x-riverCenter(z));
+ if(riverDist<19)return "river";
+ if(Math.abs(z)<10||Math.abs(x)<8)return "road";
+ const h=terrainHeight(x,z);
+ if(h>55)return "mountain";
+ if(h>22)return "hill";
+ if(Math.sin(x*.014+z*.009)>.35)return "forest";
+ if(h< -8)return "marsh";
+ return "plains";
 }
 function terrainAttack(unit,target){
  const t=terrainAt(target.x,target.z);let m=1;
  if(t==="forest"){if(unit.kind==="archer")m*=1.22;if(unit.kind==="knight")m*=.88;}
- if(t==="hill"&&(unit.kind==="archer"||unit.kind==="siege"))m*=1.2;
+ if((t==="hill"||t==="mountain")&&(unit.kind==="archer"||unit.kind==="siege"))m*=1.2;
  if(t==="marsh"&&unit.kind==="knight")m*=.78;
  if(unit.kind==="pikeman"&&(target.kind==="knight"||target.kind==="lightcavalry"))m*=1.65;
  if(unit.kind==="archer"&&target.kind==="siege")m*=1.25;
@@ -54,7 +71,7 @@ function terrainAttack(unit,target){
  return m;
 }
 function structureDamage(unit,target){let m=1;if(target.category!=="building")return m;if(unit.kind==="siege")m=3.2;else if(unit.kind==="engineer")m=1.8;else if(unit.kind==="knight"||unit.kind==="menatarms")m=1.15;else if(unit.kind==="archer"||unit.kind==="crossbow"||unit.kind==="ship")m=.45;else m=.7;if(target.kind==="tower"&&unit.kind!=="siege"&&unit.kind!=="engineer")m*=.8;return m;}
-function terrainSpeed(unit){const t=terrainAt(unit.x,unit.z);return t==="road"?1.22:t==="marsh"?(unit.kind==="knight"?.58:.78):t==="forest"?.88:1;}
+function terrainSpeed(unit){const t=terrainAt(unit.x,unit.z);return t==="road"?1.22:t==="river"?(unit.kind==="knight"?.62:.82):t==="marsh"?(unit.kind==="knight"?.58:.78):t==="forest"?.88:1;}
 function allItems(room){const out=[];for(const p of Object.values(room.state.players)){for(const b of p.buildings)out.push({...b,owner:p.id,category:"building"});for(const u of p.units)out.push({...u,owner:p.id,category:"unit"});}return out;}
 
 wss.on("connection",ws=>{
