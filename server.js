@@ -186,6 +186,7 @@ setInterval(()=>{
    p.food+=farms*.55;p.wood+=lumberyards*.45;p.stone+=quarries*.3;p.gold+=markets*.3;
    if(p.units.length)p.food=Math.max(0,p.food-p.units.length*.018);
   }
+  for(const p of players)if(!p.defeated){for(const blueprint of p.buildings.filter(b=>b.underConstruction)){let worker=p.units.find(u=>u.kind==="builder"&&u.id===blueprint.builderId);if(!worker){worker=p.units.find(u=>u.kind==="builder"&&!u.assignedBuildingId);if(!worker){const castle=p.buildings.find(b=>b.kind==="castle");if(castle){worker={id:"i"+nextId++,kind:"builder",x:castle.x+9,z:castle.z+8,owner:p.id,...UNIT_STATS.builder,maxHp:UNIT_STATS.builder.hp,tx:castle.x+9,tz:castle.z+8};p.units.push(worker);}}if(worker){worker.assignedBuildingId=blueprint.id;blueprint.builderId=worker.id;worker.tx=blueprint.x;worker.tz=blueprint.z;}}}}
   const items=allItems(room);
   for(const p of players)if(!p.defeated)for(const u of p.units){
    let target=null,best=Infinity;
