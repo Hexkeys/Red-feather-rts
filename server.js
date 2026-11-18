@@ -12,7 +12,7 @@ const rooms = new Map();
 let nextId = 1;
 
 const COSTS = {
-  house:{wood:90}, farm:{wood:65}, lumberyard:{wood:80}, quarry:{wood:80,stone:25}, market:{wood:100,stone:40}, barracks:{wood:120,stone:35}, archery:{wood:100,stone:25}, stable:{wood:150,stone:60}, siegeworkshop:{wood:180,stone:100}, tower:{wood:55,stone:70}, dock:{wood:150,stone:40},
+  house:{wood:90}, farm:{wood:65}, lumberyard:{wood:80}, quarry:{wood:80,stone:25}, market:{wood:100,stone:40}, barracks:{wood:120,stone:35}, archery:{wood:100,stone:25}, stable:{wood:150,stone:60}, siegeworkshop:{wood:180,stone:100}, tower:{wood:55,stone:70}, wall:{wood:45,stone:25}, dock:{wood:150,stone:40},
   soldier:{gold:45,food:35}, menatarms:{gold:85,food:45}, archer:{gold:55,wood:15,food:30}, crossbow:{gold:75,wood:25,food:35}, knight:{gold:110,food:55}, lightcavalry:{gold:85,food:50},
   pikeman:{gold:65,wood:10,food:40}, siege:{gold:160,wood:90}, engineer:{gold:95,wood:35,food:30}, ship:{gold:130,wood:120,food:25}
 };
@@ -23,7 +23,7 @@ const UNIT_STATS = {
   pikeman:{hp:125,damage:17,range:2.3,speed:3.0},
   siege:{hp:220,damage:38,range:10,speed:1.5}, engineer:{hp:90,damage:7,range:1.8,speed:2.7}, ship:{hp:260,damage:25,range:9,speed:2.4}
 };
-const BUILDING_STATS = {house:{hp:260},farm:{hp:180},lumberyard:{hp:220},quarry:{hp:260},market:{hp:300},barracks:{hp:500},archery:{hp:420},stable:{hp:480},siegeworkshop:{hp:520},tower:{hp:420,damage:18,range:11},dock:{hp:450}};
+const BUILDING_STATS = {house:{hp:260},farm:{hp:180},lumberyard:{hp:220},quarry:{hp:260},market:{hp:300},barracks:{hp:500},archery:{hp:420},stable:{hp:480},siegeworkshop:{hp:520},tower:{hp:420,damage:18,range:11},wall:{hp:650},dock:{hp:450}};
 const BUILDINGS = new Set(Object.keys(BUILDING_STATS));
 const UNITS = new Set(Object.keys(UNIT_STATS));
 
@@ -88,9 +88,20 @@ wss.on("connection",ws=>{
    const px=Number(msg.x),pz=Number(msg.z);
    const item={id:"i"+nextId++,kind,x:isBuilding?clamp(Number.isFinite(px)?px:me.x,-45,45):clamp(me.x+clamp(Number.isFinite(px)?px:0,-5,5),-45,45),z:isBuilding?clamp(Number.isFinite(pz)?pz:0,-45,45):clamp(Number.isFinite(pz)?pz:0,-5,5),owner:playerId};
    if(isBuilding){
-    const radius=kind==="barracks"||kind==="dock"?4.2:3.2;
-    const crowded=allItems(room).some(other=>distance(item,other)<radius+(other.category==="building"?3:1.2));
-    if(crowded){notice(ws,"That spot is occupied. Choose another location.");return;}
+    if(kind==="wall"){
+     const x2=Number(msg.x2),z2=Number(msg.z2);
+     if(!Number.isFinite(x2)||!Number.isFinite(z2)){notice(ws,"Choose both ends of the wall.");return;}
+     item.x2=clamp(x2,-45,45);item.z2=clamp(z2,-45,45);
+     const length=distance(item,{x:item.x2,z:item.z2});
+     if(length<3||length>32){notice(ws,"Wall length must be between 3 and 32 metres.");return;}
+     const midpoint={x:(item.x+item.x2)/2,z:(item.z+item.z2)/2};
+     const crowded=allItems(room).some(other=>distance(midpoint,other)<length*.22+2.5);
+     if(crowded){notice(ws,"That wall overlaps a nearby structure. Choose another line.");return;}
+    }else{
+     const radius=kind==="barracks"||kind==="dock"?4.2:3.2;
+     const crowded=allItems(room).some(other=>distance(item,other)<radius+(other.category==="building"?3:1.2));
+     if(crowded){notice(ws,"That spot is occupied. Choose another location.");return;}
+    }
     for(const[k,v]of Object.entries(cost))me[k]-=v;
     Object.assign(item,BUILDING_STATS[kind]);me.buildings.push(item);
    }else{for(const[k,v]of Object.entries(cost))me[k]-=v;Object.assign(item,UNIT_STATS[kind],{maxHp:UNIT_STATS[kind].hp,tx:item.x,tz:item.z});me.units.push(item);}
