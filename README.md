@@ -30,7 +30,8 @@ The `/health` endpoint is available for service health checks. Render Web Servic
 - Recruit soldiers, archers, knights, pikemen, siege carts, and ships.
 - Gold, wood, food, and stone economy with passive income and farm/house bonuses.
 - Shared multiplayer rooms, player kingdom colors, synchronized buildings/units, and realm chat.
-- Right-click your units and a destination to issue a move order.
+- Right-click (or tap on touchscreens) your units and a destination to issue a move order.
+- Server-authoritative unit movement, automatic nearby combat, unit health, and defensive tower attacks.
 
 ## Controls
 
@@ -43,7 +44,7 @@ The `/health` endpoint is available for service health checks. Render Web Servic
 
 ## Multiplayer and production notes
 
-This is a playable starter, not yet a complete competitive RTS. The current server keeps room state in memory, so a server restart clears matches and multiple server instances will not share state. For a larger public launch, add persistent storage (for example Redis/PostgreSQL), server-side movement/combat simulation, reconnect handling, rate limits, room capacity limits, and automated tests. Keep the authoritative game state on the server.
+This is an early playable RTS prototype, not yet a complete competitive RTS. The current server keeps room state in memory, so a server restart clears matches and multiple server instances will not share state. For a larger public launch, add persistent storage (for example Redis/PostgreSQL), server-side movement/combat simulation, reconnect handling, rate limits, room capacity limits, and automated tests. Keep the authoritative game state on the server.
 
 ## Fair monetization roadmap
 
