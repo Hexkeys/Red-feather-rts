@@ -85,7 +85,6 @@ wss.on("connection",ws=>{
    if(UNITS.has(kind)&&!me.buildings.some(b=>b.kind==="barracks")&&!(kind==="ship"&&me.buildings.some(b=>b.kind==="dock"))){notice(ws,"Build a barracks before recruiting an army.");return;}
    if(kind==="ship"&&!me.buildings.some(b=>b.kind==="dock")){notice(ws,"Build a harbor before commissioning a ship.");return;}
    if(Object.entries(cost).some(([k,v])=>me[k]<v)){notice(ws,"Not enough resources.");return;}
-   for(const[k,v]of Object.entries(cost))me[k]-=v;
    const isBuilding=BUILDINGS.has(kind);
    const px=Number(msg.x),pz=Number(msg.z);
    const item={id:"i"+nextId++,kind,x:isBuilding?clamp(Number.isFinite(px)?px:me.x,-45,45):clamp(me.x+clamp(Number.isFinite(px)?px:0,-5,5),-45,45),z:isBuilding?clamp(Number.isFinite(pz)?pz:0,-45,45):clamp(Number.isFinite(pz)?pz:0,-5,5),owner:playerId};
@@ -93,8 +92,9 @@ wss.on("connection",ws=>{
     const radius=kind==="barracks"||kind==="dock"?4.2:3.2;
     const crowded=allItems(room).some(other=>distance(item,other)<radius+(other.category==="building"?3:1.2));
     if(crowded){notice(ws,"That spot is occupied. Choose another location.");return;}
+    for(const[k,v]of Object.entries(cost))me[k]-=v;
     Object.assign(item,BUILDING_STATS[kind]);me.buildings.push(item);
-   }else{Object.assign(item,UNIT_STATS[kind],{maxHp:UNIT_STATS[kind].hp,tx:item.x,tz:item.z});me.units.push(item);}
+   }else{for(const[k,v]of Object.entries(cost))me[k]-=v;Object.assign(item,UNIT_STATS[kind],{maxHp:UNIT_STATS[kind].hp,tx:item.x,tz:item.z});me.units.push(item);}
    broadcast(room,snapshot(room));broadcast(room,{type:"notice",text:me.name+(isBuilding?" built ":" recruited ")+kind+"."});return;
   }
   if(msg.type==="chat"){
