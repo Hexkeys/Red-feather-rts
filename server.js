@@ -39,6 +39,7 @@ function distance(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
 function clamp(n,min,max){return Math.max(min,Math.min(max,n));}
 // Deterministic terrain aligned with the client-side continental map.
 function riverCenter(z){return Math.sin(z*.00105)*368+Math.sin(z*.00275)*96-140+Math.sin(z*.00048)*110;}
+function islandCoastRadius(x,z){const a=Math.atan2(z,x);return .865+.035*Math.sin(a*3+.4)+.018*Math.sin(a*7-1.1);}
 function terrainHeight(x,z){
  const broad=Math.sin(x*.0015+Math.sin(z*.001)*1.4)*Math.cos(z*.00175)*48;
  const rolling=Math.sin(x*.00475+z*.003)*Math.cos(z*.0045-x*.00225)*19+Math.sin(x*.0085-z*.00675)*8;
@@ -47,18 +48,25 @@ function terrainHeight(x,z){
  const peaks=Math.pow(ridgeA,1.65)*(150+Math.max(0,Math.sin(z*.0045))*210)+Math.pow(ridgeB,1.7)*(115+Math.max(0,Math.cos(z*.004))*185);
  const foothills=Math.max(0,1-Math.abs(x+320)/1160)*Math.max(0,Math.sin(z*.00225+1))*62;
  const riverDist=Math.abs(x-riverCenter(z));
- return broad+rolling+peaks+foothills-Math.max(0,1-riverDist/350)*35-Math.max(0,1-riverDist/155)*14;
+ const valley=-Math.max(0,1-riverDist/350)*35,bank=-Math.max(0,1-riverDist/155)*14;
+ const d=Math.sqrt((x/2350)**2+(z/1720)**2),shore=clamp((islandCoastRadius(x,z)+.055-d)/.28,0,1);
+ const landMask=shore*shore*(3-2*shore);
+ return -82+145*landMask+(broad+rolling+peaks+foothills+valley+bank)*landMask;
 }
 function terrainAt(x,z){
- const riverDist=Math.abs(x-riverCenter(z));
- if(riverDist<68)return "river";
+ const riverDist=Math.abs(x-riverCenter(z));if(riverDist<68)return "river";
+ const h=terrainHeight(x,z);if(h<0)return "sea";
  if(Math.abs(z)<34||Math.abs(x)<24)return "road";
- const h=terrainHeight(x,z);
- if(h>145)return "mountain";
- if(h>48)return "hill";
+ if(h>145)return "mountain";if(h>48)return "hill";
  if(Math.sin(x*.0035+z*.00225)>.28)return "forest";
- if(h< -30)return "marsh";
- return "plains";
+ if(h<18)return "beach";return "plains";
+}
+function findNearbySea(x,z,maxDistance=260){
+ for(let r=20;r<=maxDistance;r+=20)for(let i=0;i<32;i++){
+  const a=i*Math.PI/16,px=x+Math.cos(a)*r,pz=z+Math.sin(a)*r;
+  if(terrainAt(px,pz)==="sea")return{x:px,z:pz};
+ }
+ return null;
 }
 function terrainAttack(unit,target){
  const t=terrainAt(target.x,target.z);let m=1;
@@ -110,6 +118,7 @@ wss.on("connection",ws=>{
    const px=Number(msg.x),pz=Number(msg.z);
    const item={id:"i"+nextId++,kind,x:isBuilding?clamp(Number.isFinite(px)?px:me.x,-2370,2370):clamp(me.x+clamp(Number.isFinite(px)?px:0,-5,5),-2370,2370),z:isBuilding?clamp(Number.isFinite(pz)?pz:0,-1770,1770):clamp(Number.isFinite(pz)?pz:0,-5,5),owner:playerId};
    if(isBuilding){
+    if(kind==="dock"&&!findNearbySea(item.x,item.z,300)){notice(ws,"Build the harbor near the island shoreline so ships can launch.");return;}
     const nearEnemyCastle=allItems(room).some(other=>other.kind==="castle"&&other.owner!==playerId&&distance(item,other)<175);
     if(nearEnemyCastle){notice(ws,"That blueprint is too close to an enemy castle. Choose a safer location.");return;}
     if(kind==="wall"){
@@ -151,7 +160,10 @@ wss.on("connection",ws=>{
   }
   if(msg.type==="order"){
    if(!Array.isArray(msg.ids)||!Number.isFinite(msg.x)||!Number.isFinite(msg.z))return;
-   const ids=[...new Set(msg.ids.map(String))].slice(0,80),selected=ids.map(id=>me.units.find(u=>u.id===id)).filter(Boolean),mode=msg.mode==="attack"?"attack":"move",formation=["line","column","wedge","box"].includes(msg.formation)?msg.formation:"box",spacing=6.4;
+   const ids=[...new Set(msg.ids.map(String))].slice(0,80),selected=ids.map(id=>me.units.find(u=>u.id===id)).filter(Boolean);
+   if(selected.some(u=>u.kind==="ship")&&terrainAt(msg.x,msg.z)!=="sea"){notice(ws,"Ships can only sail in open water. Choose a blue-water destination.");return;}
+   if(selected.some(u=>u.kind!=="ship")&&selected.some(u=>u.kind==="ship")){notice(ws,"Select ships separately from land troops.");return;}
+   const mode=msg.mode==="attack"?"attack":"move",formation=["line","column","wedge","box"].includes(msg.formation)?msg.formation:"box",spacing=6.4;
    selected.forEach((unit,i)=>{let ox=0,oz=0;if(formation==="line"){ox=(i-(selected.length-1)/2)*spacing;}else if(formation==="column"){oz=(i-(selected.length-1)/2)*spacing;}else if(formation==="wedge"){const row=Math.floor((Math.sqrt(8*i+1)-1)/2),col=i-row*(row+1)/2;ox=(col-row/2)*spacing;oz=row*spacing*.78;}else{const cols=Math.max(1,Math.ceil(Math.sqrt(selected.length))),rows=Math.ceil(selected.length/cols);ox=(i%cols-(cols-1)/2)*spacing;oz=(Math.floor(i/cols)-(rows-1)/2)*spacing;}
     unit.tx=clamp(msg.x+ox,-2390,2390);unit.tz=clamp(msg.z+oz,-1790,1790);unit.orderMode=mode;});
    broadcast(room,snapshot(room));return;
@@ -163,7 +175,7 @@ wss.on("connection",ws=>{
   }
   if(msg.type==="move"){
    const unit=me.units.find(u=>u.id===msg.id);
-   if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){unit.tx=clamp(msg.x,-2390,2390);unit.tz=clamp(msg.z,-1790,1790);unit.orderMode="move";return;}
+   if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){if(unit.kind==="ship"&&terrainAt(msg.x,msg.z)!=="sea"){notice(ws,"Ships can only sail in open water.");return;}unit.tx=clamp(msg.x,-2390,2390);unit.tz=clamp(msg.z,-1790,1790);unit.orderMode="move";return;}
   }
  });
  ws.on("close",()=>{
@@ -195,11 +207,11 @@ setInterval(()=>{
    let target=null,best=Infinity;
    for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||u.kind==="builder")continue;const dist=distance(u,enemy);if(dist<=u.range&&dist<best){best=dist;target=enemy;}}
    const dx=u.tx-u.x,dz=u.tz-u.z,d=Math.hypot(dx,dz);
-   const stance=u.stance||"guard";if(stance!=="hold"&&d>.15&&!(target&&u.orderMode==="attack")){const step=Math.min(d,u.speed*terrainSpeed(u)*dt);u.x+=dx/d*step;u.z+=dz/d*step;}
+   const stance=u.stance||"guard";if(stance!=="hold"&&d>.15&&!(target&&u.orderMode==="attack")){const step=Math.min(d,u.speed*terrainSpeed(u)*dt),nx=u.x+dx/d*step,nz=u.z+dz/d*step;if(u.kind!=="ship"||terrainAt(nx,nz)==="sea"){u.x=nx;u.z=nz;}}
    if(u.kind==="builder"&&u.assignedBuildingId&&d<5){const blueprint=p.buildings.find(b=>b.id===u.assignedBuildingId);if(blueprint&&blueprint.underConstruction){blueprint.progress=Math.min(1,(blueprint.progress||0)+dt/10);blueprint.hp=blueprint.maxHp*(.12+.88*blueprint.progress);if(blueprint.progress>=1){blueprint.underConstruction=false;delete blueprint.builderId;delete u.assignedBuildingId;u.tx=u.x;u.tz=u.z;u.orderMode="move";}}}
    if(target&&u.kind!=="builder"&&u.damage>0){const owner=room.state.players[target.owner],list=target.category==="unit"?owner.units:owner.buildings,actual=list.find(x=>x.id===target.id);if(actual)actual.hp-=u.damage*terrainAttack(u,actual)*structureDamage(u,target)*terrainCover(actual)*dt;}
   }
-  for(const p of players)if(!p.defeated)for(const facility of p.buildings){if(!facility.productionQueue?.length)continue;const job=facility.productionQueue[0];job.remaining-=dt;if(job.remaining<=0){const kind=job.kind,stats=UNIT_STATS[kind];if(stats){const unit={id:"i"+nextId++,kind,x:facility.x+7,z:facility.z+5,owner:p.id,...stats,maxHp:stats.hp,tx:facility.x+7,tz:facility.z+5};p.units.push(unit);}facility.productionQueue.shift();}}
+  for(const p of players)if(!p.defeated)for(const facility of p.buildings){if(!facility.productionQueue?.length)continue;const job=facility.productionQueue[0];job.remaining-=dt;if(job.remaining<=0){const kind=job.kind,stats=UNIT_STATS[kind];if(stats){let sx=facility.x+7,sz=facility.z+5;if(kind==="ship"){const water=findNearbySea(facility.x,facility.z,300);if(!water){facility.productionQueue.shift();notice(room.players.get(p.id)?.ws,"This harbor has no nearby water. Build it closer to the coast.");continue;}sx=water.x;sz=water.z;}const unit={id:"i"+nextId++,kind,x:sx,z:sz,owner:p.id,...stats,maxHp:stats.hp,tx:sx,tz:sz};p.units.push(unit);}facility.productionQueue.shift();}}
   for(const p of players)if(!p.defeated)for(const tower of p.buildings.filter(b=>b.kind==="tower")){
    let target=null,best=Infinity;for(const enemy of items){if(enemy.owner===p.id||enemy.category!=="unit"||enemy.hp<=0)continue;const d=distance(tower,enemy);if(d<=tower.range&&d<best){best=d;target=enemy;}}
    if(target){const owner=room.state.players[target.owner];const unit=owner?.units.find(u=>u.id===target.id);if(unit)unit.hp-=tower.damage*dt*(terrainAt(unit.x,unit.z)==="forest"?.82:1);}
