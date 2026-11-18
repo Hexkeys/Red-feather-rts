@@ -131,8 +131,14 @@ wss.on("connection",ws=>{
   }
   if(msg.type==="order"){
    if(!Array.isArray(msg.ids)||!Number.isFinite(msg.x)||!Number.isFinite(msg.z))return;
-   const ids=[...new Set(msg.ids.map(String))].slice(0,80),selected=ids.map(id=>me.units.find(u=>u.id===id)).filter(Boolean),mode=msg.mode==="attack"?"attack":"move",cols=Math.max(1,Math.ceil(Math.sqrt(selected.length))),rows=Math.ceil(selected.length/cols);
-   selected.forEach((unit,i)=>{const col=i%cols,row=Math.floor(i/cols);unit.tx=clamp(msg.x+(col-(cols-1)/2)*5.2,-2390,2390);unit.tz=clamp(msg.z+(row-(rows-1)/2)*5.2,-1790,1790);unit.orderMode=mode;});
+   const ids=[...new Set(msg.ids.map(String))].slice(0,80),selected=ids.map(id=>me.units.find(u=>u.id===id)).filter(Boolean),mode=msg.mode==="attack"?"attack":"move",formation=["line","column","wedge","box"].includes(msg.formation)?msg.formation:"box",spacing=5.2;
+   selected.forEach((unit,i)=>{let ox=0,oz=0;if(formation==="line"){ox=(i-(selected.length-1)/2)*spacing;}else if(formation==="column"){oz=(i-(selected.length-1)/2)*spacing;}else if(formation==="wedge"){const row=Math.floor((Math.sqrt(8*i+1)-1)/2),col=i-row*(row+1)/2;ox=(col-row/2)*spacing;oz=row*spacing*.78;}else{const cols=Math.max(1,Math.ceil(Math.sqrt(selected.length))),rows=Math.ceil(selected.length/cols);ox=(i%cols-(cols-1)/2)*spacing;oz=(Math.floor(i/cols)-(rows-1)/2)*spacing;}
+    unit.tx=clamp(msg.x+ox,-2390,2390);unit.tz=clamp(msg.z+oz,-1790,1790);unit.orderMode=mode;});
+   broadcast(room,snapshot(room));return;
+  }
+  if(msg.type==="command"){
+   if(!Array.isArray(msg.ids))return;const stance=["guard","hold","aggressive"].includes(msg.stance)?msg.stance:null;if(!stance)return;
+   const ids=[...new Set(msg.ids.map(String))].slice(0,80);for(const id of ids){const unit=me.units.find(u=>u.id===id);if(unit){unit.stance=stance;if(stance==="hold"){unit.tx=unit.x;unit.tz=unit.z;unit.orderMode="move";}}}
    broadcast(room,snapshot(room));return;
   }
   if(msg.type==="move"){
@@ -167,7 +173,7 @@ setInterval(()=>{
    let target=null,best=Infinity;
    for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0)continue;const dist=distance(u,enemy);if(dist<=u.range&&dist<best){best=dist;target=enemy;}}
    const dx=u.tx-u.x,dz=u.tz-u.z,d=Math.hypot(dx,dz);
-   if(d>.15&&!(target&&u.orderMode==="attack")){const step=Math.min(d,u.speed*terrainSpeed(u)*dt);u.x+=dx/d*step;u.z+=dz/d*step;}
+   const stance=u.stance||"guard";if(stance!=="hold"&&d>.15&&!(target&&u.orderMode==="attack")){const step=Math.min(d,u.speed*terrainSpeed(u)*dt);u.x+=dx/d*step;u.z+=dz/d*step;}
    if(target){const owner=room.state.players[target.owner],list=target.category==="unit"?owner.units:owner.buildings,actual=list.find(x=>x.id===target.id);if(actual)actual.hp-=u.damage*terrainAttack(u,actual)*structureDamage(u,target)*terrainCover(actual)*dt;}
   }
   for(const p of players)for(const tower of p.buildings.filter(b=>b.kind==="tower")){
