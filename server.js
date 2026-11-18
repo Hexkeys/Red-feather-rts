@@ -114,11 +114,12 @@ wss.on("connection",ws=>{
    if(room.players.size>=8){notice(ws,"This realm is full (8 players).");ws.close();return;}
    playerId="p"+nextId++;
    const color=["#b84a3a","#4778b8","#6d9b58","#a17ac2","#c08a36","#4b9b9b","#9b5478","#858c4b"][room.players.size];
-   const spawnX=(room.players.size-3.5)*360;
+   const spawnPoints=[[-1300,-650],[-650,-900],[650,-900],[1300,-650],[1300,650],[650,900],[-650,900],[-1300,650]];
+   const [spawnX,spawnZ]=spawnPoints[room.players.size];
    room.players.set(playerId,{ws,name,color});
-   const castle={id:"i"+nextId++,kind:"castle",x:spawnX,z:0,owner:playerId,...BUILDING_STATS.castle};
-   const builder={id:"i"+nextId++,kind:"builder",x:spawnX+9,z:8,owner:playerId,...UNIT_STATS.builder,maxHp:UNIT_STATS.builder.hp,tx:spawnX+9,tz:8};
-   room.state.players[playerId]={id:playerId,name,color,gold:300,wood:260,food:220,stone:140,score:0,buildings:[castle],units:[builder],x:spawnX,defeated:false};
+   const castle={id:"i"+nextId++,kind:"castle",x:spawnX,z:spawnZ,owner:playerId,...BUILDING_STATS.castle};
+   const builder={id:"i"+nextId++,kind:"builder",x:spawnX+9,z:spawnZ+8,owner:playerId,...UNIT_STATS.builder,maxHp:UNIT_STATS.builder.hp,tx:spawnX+9,tz:spawnZ+8};
+   room.state.players[playerId]={id:playerId,name,color,gold:300,wood:260,food:220,stone:140,score:0,buildings:[castle],units:[builder],x:spawnX,z:spawnZ,defeated:false};
    ws.roomCode=code;ws.playerId=playerId;
    send(ws,{type:"welcome",id:playerId,room:code,color});
    broadcast(room,snapshot(room));broadcast(room,{type:"notice",text:name+" joined the realm."});return;
