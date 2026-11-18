@@ -68,6 +68,25 @@ function findNearbySea(x,z,maxDistance=260){
  }
  return null;
 }
+function findWaterRoute(start,target){
+ const step=100,minX=-2400,minZ=-1800,cols=49,rows=37;
+ const toCell=p=>({x:clamp(Math.round((p.x-minX)/step),0,cols-1),z:clamp(Math.round((p.z-minZ)/step),0,rows-1)});
+ const point=(x,z)=>({x:minX+x*step,z:minZ+z*step});
+ const nearest=(p)=>{const c=toCell(p);let best=null,dist=Infinity;for(let r=0;r<=5&&!best;r++)for(let dz=-r;dz<=r;dz++)for(let dx=-r;dx<=r;dx++){if(Math.max(Math.abs(dx),Math.abs(dz))!==r)continue;const x=c.x+dx,z=c.z+dz;if(x<0||x>=cols||z<0||z>=rows)continue;const q=point(x,z);if(terrainAt(q.x,q.z)!=="sea")continue;const d=(q.x-p.x)**2+(q.z-p.z)**2;if(d<dist){best={x,z};dist=d;}}return best;};
+ const a=nearest(start),b=nearest(target);if(!a||!b)return null;
+ const key=(x,z)=>x+","+z,open=[{...a,g:0,f:Math.hypot(a.x-b.x,a.z-b.z)}],came=new Map(),scores=new Map([[key(a.x,a.z),0]]),closed=new Set();
+ const dirs=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
+ let found=false,iterations=0;
+ while(open.length&&iterations++<5000){
+  let bi=0;for(let i=1;i<open.length;i++)if(open[i].f<open[bi].f)bi=i;
+  const cur=open.splice(bi,1)[0],ck=key(cur.x,cur.z);if(closed.has(ck))continue;if(cur.x===b.x&&cur.z===b.z){found=true;break;}closed.add(ck);
+  for(const [dx,dz] of dirs){const nx=cur.x+dx,nz=cur.z+dz;if(nx<0||nx>=cols||nz<0||nz>=rows)continue;const nk=key(nx,nz);if(closed.has(nk))continue;const q=point(nx,nz);if(terrainAt(q.x,q.z)!=="sea")continue;if(dx&&dz&&(terrainAt(...Object.values(point(cur.x+dx,cur.z)))!=="sea"||terrainAt(...Object.values(point(cur.x,cur.z+dz)))!=="sea"))continue;
+   const ng=cur.g+(dx&&dz?1.4142:1);if(ng>=(scores.get(nk)??Infinity))continue;scores.set(nk,ng);came.set(nk,ck);open.push({x:nx,z:nz,g:ng,f:ng+Math.hypot(nx-b.x,nz-b.z)});
+  }
+ }
+ if(!found)return null;
+ const cells=[];let k=key(b.x,b.z);while(k!==key(a.x,a.z)){const [x,z]=k.split(",").map(Number);cells.push(point(x,z));k=came.get(k);if(!k)return null;}cells.reverse();cells.push({x:target.x,z:target.z});return cells;
+}
 function terrainAttack(unit,target){
  const t=terrainAt(target.x,target.z);let m=1;
  if(t==="forest"){if(unit.kind==="archer")m*=1.22;if(unit.kind==="knight")m*=.88;}
@@ -165,7 +184,9 @@ wss.on("connection",ws=>{
    if(selected.some(u=>u.kind!=="ship")&&selected.some(u=>u.kind==="ship")){notice(ws,"Select ships separately from land troops.");return;}
    const mode=msg.mode==="attack"?"attack":"move",formation=["line","column","wedge","box"].includes(msg.formation)?msg.formation:"box",spacing=6.4;
    selected.forEach((unit,i)=>{let ox=0,oz=0;if(formation==="line"){ox=(i-(selected.length-1)/2)*spacing;}else if(formation==="column"){oz=(i-(selected.length-1)/2)*spacing;}else if(formation==="wedge"){const row=Math.floor((Math.sqrt(8*i+1)-1)/2),col=i-row*(row+1)/2;ox=(col-row/2)*spacing;oz=row*spacing*.78;}else{const cols=Math.max(1,Math.ceil(Math.sqrt(selected.length))),rows=Math.ceil(selected.length/cols);ox=(i%cols-(cols-1)/2)*spacing;oz=(Math.floor(i/cols)-(rows-1)/2)*spacing;}
-    unit.tx=clamp(msg.x+ox,-2390,2390);unit.tz=clamp(msg.z+oz,-1790,1790);unit.orderMode=mode;});
+    const tx=clamp(msg.x+ox,-2390,2390),tz=clamp(msg.z+oz,-1790,1790);
+    if(unit.kind==="ship"){const route=findWaterRoute(unit, {x:tx,z:tz});if(!route){notice(ws,"No clear water route to that destination. Choose a closer point at sea.");return;}unit.path=route;}else delete unit.path;
+    unit.tx=tx;unit.tz=tz;unit.orderMode=mode;});
    broadcast(room,snapshot(room));return;
   }
   if(msg.type==="command"){
@@ -175,7 +196,7 @@ wss.on("connection",ws=>{
   }
   if(msg.type==="move"){
    const unit=me.units.find(u=>u.id===msg.id);
-   if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){if(unit.kind==="ship"&&terrainAt(msg.x,msg.z)!=="sea"){notice(ws,"Ships can only sail in open water.");return;}unit.tx=clamp(msg.x,-2390,2390);unit.tz=clamp(msg.z,-1790,1790);unit.orderMode="move";return;}
+   if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){if(unit.kind==="ship"){if(terrainAt(msg.x,msg.z)!=="sea"){notice(ws,"Ships can only sail in open water.");return;}const route=findWaterRoute(unit,{x:msg.x,z:msg.z});if(!route){notice(ws,"No clear water route to that destination.");return;}unit.path=route;}unit.tx=clamp(msg.x,-2390,2390);unit.tz=clamp(msg.z,-1790,1790);unit.orderMode="move";return;}
   }
  });
  ws.on("close",()=>{
@@ -206,8 +227,8 @@ setInterval(()=>{
   for(const p of players)if(!p.defeated)for(const u of p.units){
    let target=null,best=Infinity;
    for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||u.kind==="builder")continue;const dist=distance(u,enemy);if(dist<=u.range&&dist<best){best=dist;target=enemy;}}
-   const dx=u.tx-u.x,dz=u.tz-u.z,d=Math.hypot(dx,dz);
-   const stance=u.stance||"guard";if(stance!=="hold"&&d>.15&&!(target&&u.orderMode==="attack")){const step=Math.min(d,u.speed*terrainSpeed(u)*dt),nx=u.x+dx/d*step,nz=u.z+dz/d*step;if(u.kind!=="ship"||terrainAt(nx,nz)==="sea"){u.x=nx;u.z=nz;}}
+   const moveTarget=u.kind==="ship"&&u.path?.length?u.path[0]:{x:u.tx,z:u.tz},dx=moveTarget.x-u.x,dz=moveTarget.z-u.z,d=Math.hypot(dx,dz);
+   const stance=u.stance||"guard";if(stance!=="hold"&&d>.15&&!(target&&u.orderMode==="attack")){const step=Math.min(d,u.speed*terrainSpeed(u)*dt);if(u.kind==="ship"&&d<=step+.01){u.x=moveTarget.x;u.z=moveTarget.z;if(u.path?.length)u.path.shift();}else{const nx=u.x+dx/d*step,nz=u.z+dz/d*step;if(u.kind!=="ship"||terrainAt(nx,nz)==="sea"){u.x=nx;u.z=nz;}}}
    if(u.kind==="builder"&&u.assignedBuildingId&&d<5){const blueprint=p.buildings.find(b=>b.id===u.assignedBuildingId);if(blueprint&&blueprint.underConstruction){blueprint.progress=Math.min(1,(blueprint.progress||0)+dt/10);blueprint.hp=blueprint.maxHp*(.12+.88*blueprint.progress);if(blueprint.progress>=1){blueprint.underConstruction=false;delete blueprint.builderId;delete u.assignedBuildingId;u.tx=u.x;u.tz=u.z;u.orderMode="move";}}}
    if(target&&u.kind!=="builder"&&u.damage>0){const owner=room.state.players[target.owner],list=target.category==="unit"?owner.units:owner.buildings,actual=list.find(x=>x.id===target.id);if(actual)actual.hp-=u.damage*terrainAttack(u,actual)*structureDamage(u,target)*terrainCover(actual)*dt;}
   }
