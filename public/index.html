@@ -79,7 +79,44 @@ function joinRealm(){
 joinButton.addEventListener('click',joinRealm);
 document.querySelector('#roomcode').addEventListener('keydown',e=>{if(e.key==='Enter')joinRealm()});
 document.querySelector('#playername').addEventListener('keydown',e=>{if(e.key==='Enter')joinRealm()});
-document.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>{if(!myId){notice('Join a realm first.');return}send({type:'action',kind:b.dataset.kind,x:(Math.random()-.5)*8,z:(Math.random()-.5)*8})});
+const BUILD_KINDS=new Set(['house','farm','barracks','tower','dock']);let placingKind=null,placementPreview=null,placementPoint={x:0,z:0},placementValid=false;
+function startPlacement(kind){
+ if(!myId){notice('Join a realm first.');return}
+ placingKind=kind;
+ if(placementPreview){scene.remove(placementPreview);placementPreview=null;}
+ placementPreview=building(kind,0,0,0x9bd68a);
+ placementPreview.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.material.transparent=true;o.material.opacity=.48;o.material.depthWrite=false;}});
+ document.querySelectorAll('[data-kind]').forEach(b=>b.style.outline=b.dataset.kind===kind?'2px solid #e8bd70':'');
+ notice('Place '+kind+': move your cursor and click. Press Esc or right-click to cancel.');
+}
+function finishPlacement(){
+ if(!placingKind||!placementPreview||!placementValid)return;
+ send({type:'action',kind:placingKind,x:placementPoint.x,z:placementPoint.z});
+ cancelPlacement();
+}
+function cancelPlacement(){
+ placingKind=null;placementValid=false;
+ if(placementPreview){scene.remove(placementPreview);placementPreview=null;}
+ document.querySelectorAll('[data-kind]').forEach(b=>b.style.outline='');
+}
+function updatePlacement(e){
+ if(!placingKind||!placementPreview)return;
+ mouse.x=e.clientX/innerWidth*2-1;mouse.y=-(e.clientY/innerHeight)*2+1;ray.setFromCamera(mouse,camera);
+ const hit=ray.intersectObject(ground)[0];if(!hit)return;
+ const x=Math.round(hit.point.x),z=Math.round(hit.point.z);
+ placementPoint={x,z};placementPreview.position.set(x,0,z);
+ placementValid=Math.abs(x)<=44&&Math.abs(z)<=44;
+ placementPreview.traverse(o=>{if(o.isMesh)o.material.color.setHex(placementValid?0x9bd68a:0xd45b50);});
+}
+document.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>{
+ if(BUILD_KINDS.has(b.dataset.kind)){startPlacement(b.dataset.kind);return;}
+ if(!myId){notice('Join a realm first.');return}
+ send({type:'action',kind:b.dataset.kind,x:0,z:0});
+});
+renderer.domElement.addEventListener('pointermove',updatePlacement);
+renderer.domElement.addEventListener('click',e=>{if(placingKind){updatePlacement(e);finishPlacement();}});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&placingKind)cancelPlacement();});
+renderer.domElement.addEventListener('contextmenu',e=>{if(placingKind){e.preventDefault();cancelPlacement();}});
 function renderChat(chat){const el=document.querySelector('#chatlog');el.innerHTML=chat.map(c=>'<div><b style="color:#e8bd70">'+escapeHtml(c.name)+':</b> '+escapeHtml(c.text)+'</div>').join('');el.scrollTop=el.scrollHeight}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function chat(){const input=document.querySelector('#chatinput');if(input.value.trim()){send({type:'chat',text:input.value});input.value=''}}document.querySelector('#sendchat').onclick=chat;document.querySelector('#chatinput').onkeydown=e=>{if(e.key==='Enter')chat()};
