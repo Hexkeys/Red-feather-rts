@@ -38,6 +38,23 @@ function snapshot(room){return{type:"state",players:room.state.players,chat:room
 function notice(ws,text){send(ws,{type:"notice",text});}
 function distance(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
 function clamp(n,min,max){return Math.max(min,Math.min(max,n));}
+// Deterministic tactical terrain shared by all players.
+function terrainAt(x,z){
+ if(Math.abs(z)<2.2||Math.abs(x)<1.8)return "road";
+ const a=Math.sin((x+18)*.19)*Math.cos((z-7)*.17),b=Math.cos((x-9)*.13+z*.11);
+ if(a>.56)return "forest";if(b>.72)return "hill";if(a<-.58&&Math.sin(z*.22)>.1)return "marsh";return "plains";
+}
+function terrainAttack(unit,target){
+ const t=terrainAt(target.x,target.z);let m=1;
+ if(t==="forest"){if(unit.kind==="archer")m*=1.22;if(unit.kind==="knight")m*=.88;}
+ if(t==="hill"&&(unit.kind==="archer"||unit.kind==="siege"))m*=1.2;
+ if(t==="marsh"&&unit.kind==="knight")m*=.78;
+ if(unit.kind==="pikeman"&&target.kind==="knight")m*=1.65;
+ if(unit.kind==="archer"&&target.kind==="siege")m*=1.25;
+ if(unit.kind==="knight"&&target.kind==="archer")m*=1.25;
+ return m;
+}
+function terrainSpeed(unit){const t=terrainAt(unit.x,unit.z);return t==="road"?1.22:t==="marsh"?(unit.kind==="knight"?.58:.78):t==="forest"?.88:1;}
 function allItems(room){const out=[];for(const p of Object.values(room.state.players)){for(const b of p.buildings)out.push({...b,owner:p.id,category:"building"});for(const u of p.units)out.push({...u,owner:p.id,category:"unit"});}return out;}
 
 wss.on("connection",ws=>{
@@ -54,7 +71,7 @@ wss.on("connection",ws=>{
    const color=["#b84a3a","#4778b8","#6d9b58","#a17ac2","#c08a36","#4b9b9b","#9b5478","#858c4b"][room.players.size];
    const spawnX=(room.players.size-3.5)*12;
    room.players.set(playerId,{ws,name,color});
-   room.state.players[playerId]={id:playerId,name,color,gold:500,wood:350,food:300,stone:180,buildings:[],units:[],x:spawnX};
+   room.state.players[playerId]={id:playerId,name,color,gold:300,wood:260,food:220,stone:140,score:0,buildings:[],units:[],x:spawnX};
    ws.roomCode=code;ws.playerId=playerId;
    send(ws,{type:"welcome",id:playerId,room:code,color});
    broadcast(room,snapshot(room));broadcast(room,{type:"notice",text:name+" joined the realm."});return;
@@ -63,6 +80,8 @@ wss.on("connection",ws=>{
   const me=room.state.players[playerId];if(!me)return;
   if(msg.type==="action"){
    const kind=String(msg.kind||""),cost=COSTS[kind];if(!cost)return;
+   const supply=8+me.buildings.filter(b=>b.kind==="house").length*4;
+   if(UNITS.has(kind)&&me.units.length>=supply){notice(ws,"Army supply is full. Build houses to support more units.");return;}
    if(UNITS.has(kind)&&!me.buildings.some(b=>b.kind==="barracks")&&!(kind==="ship"&&me.buildings.some(b=>b.kind==="dock"))){notice(ws,"Build a barracks before recruiting an army.");return;}
    if(kind==="ship"&&!me.buildings.some(b=>b.kind==="dock")){notice(ws,"Build a harbor before commissioning a ship.");return;}
    if(Object.entries(cost).some(([k,v])=>me[k]<v)){notice(ws,"Not enough resources.");return;}
@@ -98,20 +117,26 @@ setInterval(()=>{
   for(const p of players){
    const farms=p.buildings.filter(b=>b.kind==="farm").length;
    const houses=p.buildings.filter(b=>b.kind==="house").length;
-   p.gold+=2+houses;p.wood+=1;p.food+=1+farms;p.stone+=1;
+   p.gold+=1+Math.floor(houses*.5);p.wood+=.65;p.food+=.8+farms*.7;p.stone+=.45;
+   if(p.units.length)p.food=Math.max(0,p.food-p.units.length*.018);
   }
   const items=allItems(room);
   for(const p of players)for(const u of p.units){
    const dx=u.tx-u.x,dz=u.tz-u.z,d=Math.hypot(dx,dz);
-   if(d>.15){const step=Math.min(d,u.speed*dt);u.x+=dx/d*step;u.z+=dz/d*step;}
+   if(d>.15){const step=Math.min(d,u.speed*terrainSpeed(u)*dt);u.x+=dx/d*step;u.z+=dz/d*step;}
    let target=null,best=Infinity;
    for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0)continue;
     const dist=distance(u,enemy);if(dist<=u.range&&dist<best){best=dist;target=enemy;}}
-   if(target){const owner=room.state.players[target.owner];const list=target.category==="unit"?owner.units:owner.buildings;const actual=list.find(x=>x.id===target.id);if(actual)actual.hp-=u.damage*dt;}
+   if(target){const owner=room.state.players[target.owner];const list=target.category==="unit"?owner.units:owner.buildings;const actual=list.find(x=>x.id===target.id);if(actual)actual.hp-=u.damage*terrainAttack(u,actual)*dt;}
   }
   for(const p of players)for(const tower of p.buildings.filter(b=>b.kind==="tower")){
    let target=null,best=Infinity;for(const enemy of items){if(enemy.owner===p.id||enemy.category!=="unit"||enemy.hp<=0)continue;const d=distance(tower,enemy);if(d<=tower.range&&d<best){best=d;target=enemy;}}
-   if(target){const owner=room.state.players[target.owner];const unit=owner?.units.find(u=>u.id===target.id);if(unit)unit.hp-=tower.damage*dt;}
+   if(target){const owner=room.state.players[target.owner];const unit=owner?.units.find(u=>u.id===target.id);if(unit)unit.hp-=tower.damage*dt*(terrainAt(unit.x,unit.z)==="forest"?.82:1);}
+  }
+  const objectives=[{x:-24,z:0},{x:0,z:-24},{x:24,z:0}];
+  for(const o of objectives){
+   const presence=players.map(p=>({p,n:p.units.filter(u=>distance(u,o)<7).length})).filter(v=>v.n>0).sort((a,b)=>b.n-a.n);
+   if(presence.length&&(!presence[1]||presence[0].n>presence[1].n)){presence[0].p.score=(presence[0].p.score||0)+dt*presence[0].n*.35;presence[0].p.gold+=dt*.35;}
   }
   for(const p of players){p.units=p.units.filter(u=>u.hp>0);p.buildings=p.buildings.filter(b=>b.hp>0);}
   broadcast(room,snapshot(room));
