@@ -102,7 +102,8 @@ wss.on("connection",ws=>{
   if(msg.type==="action"){
    const kind=String(msg.kind||""),cost=COSTS[kind];if(!cost)return;
    const supply=8+me.buildings.filter(b=>b.kind==="house").length*4;
-   if(UNITS.has(kind)&&kind!=="builder"&&me.units.filter(u=>u.kind!=="builder").length>=supply){notice(ws,"Army supply is full. Build houses to support more units.");return;}
+   const queuedUnits=me.buildings.reduce((n,b)=>n+(b.productionQueue?.length||0),0);
+   if(UNITS.has(kind)&&kind!=="builder"&&me.units.filter(u=>u.kind!=="builder").length+queuedUnits>=supply){notice(ws,"Army supply is full. Build houses to support more units.");return;}
    if(UNITS.has(kind)){const facility=me.buildings.find(b=>b.id===String(msg.buildingId));const required=kind==="ship"?"dock":(kind==="archer"||kind==="crossbow")?"archery":(kind==="knight"||kind==="lightcavalry")?"stable":(kind==="siege"||kind==="engineer")?"siegeworkshop":"barracks";if(!facility||facility.kind!==required){const labels={dock:"Harbor",archery:"Archery Range",stable:"Stable",siegeworkshop:"Siege Workshop",barracks:"Barracks"};notice(ws,"Select your "+labels[required]+" to recruit this unit.");return;}}
    if(Object.entries(cost).some(([k,v])=>me[k]<v)){notice(ws,"Not enough resources.");return;}
    const isBuilding=BUILDINGS.has(kind);
@@ -118,6 +119,8 @@ wss.on("connection",ws=>{
      const length=distance(item,{x:item.x2,z:item.z2});
      if(length<3||length>32){notice(ws,"Wall length must be between 3 and 32 metres.");return;}
      const midpoint={x:(item.x+item.x2)/2,z:(item.z+item.z2)/2};
+     const nearCastle=allItems(room).some(other=>other.kind==="castle"&&other.owner!==playerId&&distance(midpoint,other)<175);
+     if(nearCastle){notice(ws,"That wall is too close to an enemy castle.");return;}
      const crowded=allItems(room).some(other=>distance(midpoint,other)<length*.22+2.5);
      if(crowded){notice(ws,"That wall overlaps a nearby structure. Choose another line.");return;}
     }else{
