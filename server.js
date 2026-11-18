@@ -109,8 +109,8 @@ wss.on("connection",ws=>{
    const px=Number(msg.x),pz=Number(msg.z);
    const item={id:"i"+nextId++,kind,x:isBuilding?clamp(Number.isFinite(px)?px:me.x,-2370,2370):clamp(me.x+clamp(Number.isFinite(px)?px:0,-5,5),-2370,2370),z:isBuilding?clamp(Number.isFinite(pz)?pz:0,-1770,1770):clamp(Number.isFinite(pz)?pz:0,-5,5),owner:playerId};
    if(isBuilding){
-    const enemyCastle=allItems(room).find(other=>other.kind==="castle"&&other.owner!==playerId);
-    if(enemyCastle&&distance(item,enemyCastle)<175){notice(ws,"That blueprint is too close to an enemy castle. Choose a safer location.");return;}
+    const nearEnemyCastle=allItems(room).some(other=>other.kind==="castle"&&other.owner!==playerId&&distance(item,other)<175);
+    if(nearEnemyCastle){notice(ws,"That blueprint is too close to an enemy castle. Choose a safer location.");return;}
     if(kind==="wall"){
      const x2=Number(msg.x2),z2=Number(msg.z2);
      if(!Number.isFinite(x2)||!Number.isFinite(z2)){notice(ws,"Choose both ends of the wall.");return;}
