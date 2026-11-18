@@ -84,7 +84,7 @@ function unit(kind,x,z,color){
 }
 const visuals=new Map();let myId=null,myColor='#b84a3a',gameState=null,selected=null,selectedProductionBuilding=null,moveMode=false,rotateMode=false,ws;
 function sync(s){gameState=s;const alive=new Set();for(const [pid,p] of Object.entries(s.players)){if(pid===myId){for(const k of ['gold','wood','food','stone'])document.getElementById(k).textContent=Math.floor(p[k]);document.getElementById('score').textContent='Control score: '+Math.floor(p.score||0);}
-for(const item of [...p.buildings,...p.units]){alive.add(item.id);if(!visuals.has(item.id)){const v=p.buildings.includes(item)?building(item.kind,item.x,item.z,p.color,item.x2,item.z2):unit(item.kind,item.x,item.z,p.color);v.userData.item=item;v.userData.owner=pid;visuals.set(item.id,v)}else{const v=visuals.get(item.id);v.position.x=item.x;v.position.z=item.z;v.userData.item=item;v.userData.owner=pid}}
+for(const item of [...p.buildings,...p.units]){alive.add(item.id);if(!visuals.has(item.id)){const v=p.buildings.includes(item)?building(item.kind,item.x,item.z,p.color,item.x2,item.z2):unit(item.kind,item.x,item.z,p.color);v.position.y=terrainHeight(item.x,item.z);v.userData.item=item;v.userData.owner=pid;visuals.set(item.id,v)}else{const v=visuals.get(item.id);v.position.x=item.x;v.position.z=item.z;v.position.y=terrainHeight(item.x,item.z);v.userData.item=item;v.userData.owner=pid}}
 }for(const [id,v] of visuals){if(!alive.has(id)){scene.remove(v);visuals.delete(id)}}if(selectedProductionBuilding&&!visuals.has(selectedProductionBuilding.id)){selectedProductionBuilding=null;updateRecruitUI();}}
 function updateRecruitUI(){const el=document.querySelector('#selectedbuilding');el.textContent=selectedProductionBuilding?selectedProductionBuilding.kind+' selected':'Select a production building on the map.';const facilityFor={soldier:'barracks',menatarms:'barracks',pikeman:'barracks',archer:'archery',crossbow:'archery',knight:'stable',lightcavalry:'stable',siege:'siegeworkshop',engineer:'siegeworkshop',ship:'dock'};document.querySelectorAll('[data-kind]').forEach(b=>{const required=facilityFor[b.dataset.kind];if(!required)return;b.disabled=!selectedProductionBuilding||selectedProductionBuilding.kind!==required;});}
 function notice(t){const el=document.querySelector('#toast');el.textContent=t;el.style.opacity=1;clearTimeout(notice.timer);notice.timer=setTimeout(()=>el.style.opacity=0,2300)}
@@ -143,13 +143,13 @@ function updatePlacement(e){
  const hit=ray.intersectObject(ground)[0];if(!hit)return;
  const point={x:Math.round(hit.point.x),z:Math.round(hit.point.z)};
  if(placingKind==='wall'){
-  if(!wallStart){placementPoint=point;placementEnd=point;placementPreview.position.set(point.x,0,point.z);}
-  else{placementEnd=point;const dx=point.x-wallStart.x,dz=point.z-wallStart.z,length=Math.hypot(dx,dz);placementPoint=wallStart;placementPreview.position.set((wallStart.x+point.x)/2,0,(wallStart.z+point.z)/2);placementPreview.rotation.y=-Math.atan2(dz,dx);const wall=placementPreview.userData.wallMesh;if(wall)wall.scale.x=Math.max(1,length);for(const [i,child] of placementPreview.children.entries()){if(i>0){const side=i===1?-.5:.5;child.position.set(side*Math.max(1,length),1.25,0);}}}
+  if(!wallStart){placementPoint=point;placementEnd=point;placementPreview.position.set(point.x,terrainHeight(point.x,point.z),point.z);}
+  else{placementEnd=point;const dx=point.x-wallStart.x,dz=point.z-wallStart.z,length=Math.hypot(dx,dz);placementPoint=wallStart;placementPreview.position.set((wallStart.x+point.x)/2,terrainHeight((wallStart.x+point.x)/2,(wallStart.z+point.z)/2),(wallStart.z+point.z)/2);placementPreview.rotation.y=-Math.atan2(dz,dx);const wall=placementPreview.userData.wallMesh;if(wall)wall.scale.x=Math.max(1,length);for(const [i,child] of placementPreview.children.entries()){if(i>0){const side=i===1?-.5:.5;child.position.set(side*Math.max(1,length),1.25,0);}}}
   placementValid=!!wallStart&&Math.hypot(point.x-wallStart.x,point.z-wallStart.z)>=3&&Math.hypot(point.x-wallStart.x,point.z-wallStart.z)<=32&&Math.abs(point.x)<=WORLD_HALF_X-12&&Math.abs(point.z)<=WORLD_HALF_Z-12;
   document.querySelector('#placementconfirm').textContent=wallStart?'Confirm wall':'Choose wall start';
   document.querySelector('#placementconfirm').disabled=!placementValid;
  }else{
-  placementPoint=point;placementPreview.position.set(point.x,0,point.z);
+  placementPoint=point;placementPreview.position.set(point.x,terrainHeight(point.x,point.z),point.z);
   placementValid=Math.abs(point.x)<=WORLD_HALF_X-12&&Math.abs(point.z)<=WORLD_HALF_Z-12;
   document.querySelector('#placementconfirm').disabled=!placementValid;
  }
