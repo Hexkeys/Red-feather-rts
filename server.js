@@ -151,7 +151,7 @@ wss.on("connection",ws=>{
   }
   if(msg.type==="order"){
    if(!Array.isArray(msg.ids)||!Number.isFinite(msg.x)||!Number.isFinite(msg.z))return;
-   const ids=[...new Set(msg.ids.map(String))].slice(0,80),selected=ids.map(id=>me.units.find(u=>u.id===id)).filter(Boolean),mode=msg.mode==="attack"?"attack":"move",formation=["line","column","wedge","box"].includes(msg.formation)?msg.formation:"box",spacing=5.2;
+   const ids=[...new Set(msg.ids.map(String))].slice(0,80),selected=ids.map(id=>me.units.find(u=>u.id===id)).filter(Boolean),mode=msg.mode==="attack"?"attack":"move",formation=["line","column","wedge","box"].includes(msg.formation)?msg.formation:"box",spacing=6.4;
    selected.forEach((unit,i)=>{let ox=0,oz=0;if(formation==="line"){ox=(i-(selected.length-1)/2)*spacing;}else if(formation==="column"){oz=(i-(selected.length-1)/2)*spacing;}else if(formation==="wedge"){const row=Math.floor((Math.sqrt(8*i+1)-1)/2),col=i-row*(row+1)/2;ox=(col-row/2)*spacing;oz=row*spacing*.78;}else{const cols=Math.max(1,Math.ceil(Math.sqrt(selected.length))),rows=Math.ceil(selected.length/cols);ox=(i%cols-(cols-1)/2)*spacing;oz=(Math.floor(i/cols)-(rows-1)/2)*spacing;}
     unit.tx=clamp(msg.x+ox,-2390,2390);unit.tz=clamp(msg.z+oz,-1790,1790);unit.orderMode=mode;});
    broadcast(room,snapshot(room));return;
