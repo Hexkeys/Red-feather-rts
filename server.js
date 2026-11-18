@@ -71,7 +71,8 @@ function terrainAttack(unit,target){
  return m;
 }
 function structureDamage(unit,target){let m=1;if(target.category!=="building")return m;if(unit.kind==="siege")m=3.2;else if(unit.kind==="engineer")m=1.8;else if(unit.kind==="knight"||unit.kind==="menatarms")m=1.15;else if(unit.kind==="archer"||unit.kind==="crossbow"||unit.kind==="ship")m=.45;else m=.7;if(target.kind==="tower"&&unit.kind!=="siege"&&unit.kind!=="engineer")m*=.8;return m;}
-function terrainSpeed(unit){const t=terrainAt(unit.x,unit.z);return t==="road"?1.22:t==="river"?(unit.kind==="knight"?.62:.82):t==="marsh"?(unit.kind==="knight"?.58:.78):t==="forest"?.88:1;}
+function terrainSpeed(unit){const t=terrainAt(unit.x,unit.z);return t==="road"?1.22:t==="river"?(unit.kind==="knight"?.62:.82):t==="marsh"?(unit.kind==="knight"?.58:.78):t==="forest"?.88:t==="mountain"?.68:t==="hill"?.86:1;}
+function terrainCover(target){const t=terrainAt(target.x,target.z);return t==="forest"?.68:t==="mountain"?.72:t==="hill"?.84:t==="marsh"?.92:1;}
 function allItems(room){const out=[];for(const p of Object.values(room.state.players)){for(const b of p.buildings)out.push({...b,owner:p.id,category:"building"});for(const u of p.units)out.push({...u,owner:p.id,category:"unit"});}return out;}
 
 wss.on("connection",ws=>{
@@ -128,9 +129,15 @@ wss.on("connection",ws=>{
    const text=String(msg.text||"").replace(/[<>]/g,"").trim().slice(0,120);
    if(text){room.state.chat.push({name:me.name,text});broadcast(room,snapshot(room));}return;
   }
+  if(msg.type==="order"){
+   if(!Array.isArray(msg.ids)||!Number.isFinite(msg.x)||!Number.isFinite(msg.z))return;
+   const ids=[...new Set(msg.ids.map(String))].slice(0,80),selected=ids.map(id=>me.units.find(u=>u.id===id)).filter(Boolean),mode=msg.mode==="attack"?"attack":"move",cols=Math.max(1,Math.ceil(Math.sqrt(selected.length))),rows=Math.ceil(selected.length/cols);
+   selected.forEach((unit,i)=>{const col=i%cols,row=Math.floor(i/cols);unit.tx=clamp(msg.x+(col-(cols-1)/2)*5.2,-2390,2390);unit.tz=clamp(msg.z+(row-(rows-1)/2)*5.2,-1790,1790);unit.orderMode=mode;});
+   broadcast(room,snapshot(room));return;
+  }
   if(msg.type==="move"){
    const unit=me.units.find(u=>u.id===msg.id);
-   if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){unit.tx=clamp(msg.x,-2390,2390);unit.tz=clamp(msg.z,-1790,1790);return;}
+   if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){unit.tx=clamp(msg.x,-2390,2390);unit.tz=clamp(msg.z,-1790,1790);unit.orderMode="move";return;}
   }
  });
  ws.on("close",()=>{
@@ -157,12 +164,11 @@ setInterval(()=>{
   }
   const items=allItems(room);
   for(const p of players)for(const u of p.units){
-   const dx=u.tx-u.x,dz=u.tz-u.z,d=Math.hypot(dx,dz);
-   if(d>.15){const step=Math.min(d,u.speed*terrainSpeed(u)*dt);u.x+=dx/d*step;u.z+=dz/d*step;}
    let target=null,best=Infinity;
-   for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0)continue;
-    const dist=distance(u,enemy);if(dist<=u.range&&dist<best){best=dist;target=enemy;}}
-   if(target){const owner=room.state.players[target.owner];const list=target.category==="unit"?owner.units:owner.buildings;const actual=list.find(x=>x.id===target.id);if(actual)actual.hp-=u.damage*terrainAttack(u,actual)*structureDamage(u,target)*dt;}
+   for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0)continue;const dist=distance(u,enemy);if(dist<=u.range&&dist<best){best=dist;target=enemy;}}
+   const dx=u.tx-u.x,dz=u.tz-u.z,d=Math.hypot(dx,dz);
+   if(d>.15&&!(target&&u.orderMode==="attack")){const step=Math.min(d,u.speed*terrainSpeed(u)*dt);u.x+=dx/d*step;u.z+=dz/d*step;}
+   if(target){const owner=room.state.players[target.owner],list=target.category==="unit"?owner.units:owner.buildings,actual=list.find(x=>x.id===target.id);if(actual)actual.hp-=u.damage*terrainAttack(u,actual)*structureDamage(u,target)*terrainCover(actual)*dt;}
   }
   for(const p of players)for(const tower of p.buildings.filter(b=>b.kind==="tower")){
    let target=null,best=Infinity;for(const enemy of items){if(enemy.owner===p.id||enemy.category!=="unit"||enemy.hp<=0)continue;const d=distance(tower,enemy);if(d<=tower.range&&d<best){best=d;target=enemy;}}
