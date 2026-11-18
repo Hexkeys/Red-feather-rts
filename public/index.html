@@ -8,12 +8,13 @@
 </style>
 </head>
 <body><div id="game"></div>
-<div id="top"><div id="brand">⚔ RED FEATHER RTS</div><div class="resources"><span class="resource">🪙 <b id="gold">500</b></span><span class="resource">🪵 <b id="wood">350</b></span><span class="resource">🍞 <b id="food">300</b></span><span class="resource">🪨 <b id="stone">180</b></span></div></div>
-<div id="chat" class="panel"><h3>Realm chat</h3><div id="chatlog"></div><div id="chatrow"><input id="chatinput" maxlength="120" placeholder="Message..."><button id="sendchat">➤</button></div></div>
-<div id="right" class="panel"><h3>Kingdom</h3><div class="muted" id="realm">Connecting to realm…</div><div class="section"><h3>Build</h3><div class="buildgrid"><button data-kind="house">🏠 House<br>90 wood</button><button data-kind="farm">🌾 Farm<br>65 wood</button><button data-kind="barracks">🏰 Barracks<br>120 wood · 35 stone</button><button data-kind="tower">🗼 Watchtower<br>55 wood · 70 stone</button><button data-kind="dock">⚓ Harbor<br>150 wood · 40 stone</button></div></div><div class="section"><h3>Recruit</h3><div class="buildgrid"><button data-kind="soldier">⚔ Soldier<br>45 gold · 35 food</button><button data-kind="archer">🏹 Archer<br>55 gold · 15 wood</button><button data-kind="knight">🐎 Knight<br>110 gold · 55 food</button><button data-kind="pikeman">🛡 Pikeman<br>65 gold · 40 food</button><button data-kind="siege">🪵 Siege cart<br>160 gold · 90 wood</button><button data-kind="ship">⛵ Ship<br>130 gold · 120 wood</button></div></div><div class="section"><h3>Strategy</h3><div class="muted" id="score">Control score: 0</div><div class="muted">Hold the three marked landmarks to earn score and a small gold bonus.</div><div class="muted" style="margin-top:6px">Terrain: Forest helps archers · Hills boost ranged units · Marsh slows knights · Roads speed everyone.</div><div class="muted" style="margin-top:6px">Army supply: 8 units + 4 per house. Troops consume food over time.</div></div></div>
-<div id="bottom"><button id="zoomout">− Zoom</button><button id="move">✥ Move camera</button><button id="rotate">⟳ Rotate</button><button id="zoomin">+ Zoom</button></div>
+<div id="top"><div id="brand">RED FEATHER RTS</div><div class="resources"><span class="resource">Gold: <b id="gold">300</b></span><span class="resource">Wood: <b id="wood">260</b></span><span class="resource">Food: <b id="food">220</b></span><span class="resource">Stone: <b id="stone">140</b></span></div></div>
+<div id="chat" class="panel"><h3>Realm chat</h3><div id="chatlog"></div><div id="chatrow"><input id="chatinput" maxlength="120" placeholder="Message..."><button id="sendchat">Send</button></div></div>
+<div id="right" class="panel"><h3>Kingdom</h3><div class="muted" id="realm">Connecting to realm…</div><div class="section"><h3>Build</h3><div class="buildgrid"><button data-kind="house">House<br>90 wood</button><button data-kind="farm">Farm<br>65 wood</button><button data-kind="barracks">Barracks<br>120 wood · 35 stone</button><button data-kind="tower">Watchtower<br>55 wood · 70 stone</button><button data-kind="dock">Harbor<br>150 wood · 40 stone</button></div></div><div class="section"><h3>Recruit</h3><div class="buildgrid"><button data-kind="soldier">Soldier<br>45 gold · 35 food</button><button data-kind="archer">Archer<br>55 gold · 15 wood</button><button data-kind="knight">Knight<br>110 gold · 55 food</button><button data-kind="pikeman">Pikeman<br>65 gold · 40 food</button><button data-kind="siege">Siege cart<br>160 gold · 90 wood</button><button data-kind="ship">Ship<br>130 gold · 120 wood</button></div></div><div class="section"><h3>Strategy</h3><div class="muted" id="score">Control score: 0</div><div class="muted">Hold the three marked landmarks to earn score and a small gold bonus.</div><div class="muted" style="margin-top:6px">Terrain: Forest helps archers · Hills boost ranged units · Marsh slows knights · Roads speed everyone.</div><div class="muted" style="margin-top:6px">Army supply: 8 units + 4 per house. Troops consume food over time.</div></div></div>
+<div id="bottom"><button id="zoomout">− Zoom</button><button id="move">Move camera</button><button id="rotate">Rotate</button><button id="zoomin">+ Zoom</button></div>
 <div id="hint">Drag to orbit · Scroll to zoom · Right-click a unit, then click a destination to move it</div><div id="toast"></div>
 <div id="join"><div class="joinbox panel"><h2 style="color:var(--gold);font-weight:normal">Enter the Realm</h2><p class="muted">Build your kingdom. Gather allies. Rule the coast.</p><input id="playername" maxlength="16" placeholder="Your lord's name" value="Lord"><input id="roomcode" maxlength="12" placeholder="Realm code" value="KINGDOM"><button id="joinbtn" style="width:100%;margin-top:8px">Join multiplayer realm</button><p class="muted">Share your realm code with friends to play together.</p></div></div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
@@ -39,17 +40,45 @@ function building(kind,x,z,color){const g=new THREE.Group();const base=new THREE
 if(kind==='tower'){const top=new THREE.Mesh(new THREE.ConeGeometry(2.8,2,4),roof);top.position.y=6;top.rotation.y=Math.PI/4;g.add(top)}else{const top=new THREE.Mesh(new THREE.ConeGeometry(kind==='barracks'?3.5:2.7,2,4),roof);top.position.y=3;top.rotation.y=Math.PI/4;g.add(top)}
 if(kind==='dock'){const deck=new THREE.Mesh(new THREE.BoxGeometry(7,.35,3),wood);deck.position.set(0,.25,-3);g.add(deck)}
 g.position.set(x,0,z);g.userData.kind=kind;scene.add(g);return g}
-function unit(kind,x,z,color){const g=new THREE.Group();const body= new THREE.Mesh(new THREE.CylinderGeometry(.35,.45,1.1,7),mat(color));body.position.y=.9;body.castShadow=true;g.add(body);const head=new THREE.Mesh(new THREE.SphereGeometry(.28,8,8),mat(0xe0b58d));head.position.y=1.65;g.add(head);const helm=new THREE.Mesh(new THREE.ConeGeometry(.32,.35,6),mat(0x777c83));helm.position.y=1.92;g.add(helm);
-if(kind==='archer'){const bow=new THREE.Mesh(new THREE.TorusGeometry(.42,.055,5,12,Math.PI),wood);bow.position.set(.42,1.05,0);bow.rotation.z=Math.PI/2;g.add(bow)}else{const blade=new THREE.Mesh(new THREE.BoxGeometry(.09,1,.12),stone);blade.position.set(.5,1.1,0);blade.rotation.z=-.25;g.add(blade)}
-if(kind==='knight'){const horse=new THREE.Mesh(new THREE.BoxGeometry(1.4,.85,.65),mat(0x76513a));horse.position.y=.55;g.add(horse);body.position.y=1.4;head.position.y=2.1;helm.position.y=2.35}
-g.position.set(x,0,z);g.userData.kind=kind;scene.add(g);return g}
+function unit(kind,x,z,color){
+ const g=new THREE.Group(),team=mat(color),dark=mat(0x34383a),steel=mat(0x9da7aa),leather=mat(0x76513a),skin=mat(0xd7ad86);
+ const add=(geo,m,px,py,pz)=>{const o=new THREE.Mesh(geo,m);o.position.set(px,py,pz);o.castShadow=true;o.receiveShadow=true;g.add(o);return o;};
+ if(kind==='ship'){add(new THREE.BoxGeometry(2.8,.55,1.05),leather,0,.55,0);add(new THREE.ConeGeometry(.78,1.7,4),mat(0xd8d0b6),0,1.65,0).rotation.z=Math.PI/2;add(new THREE.CylinderGeometry(.07,.07,2.8,6),wood,0,1.8,0).rotation.z=Math.PI/2;}
+ else if(kind==='siege'){add(new THREE.BoxGeometry(1.8,.5,1.15),leather,0,.7,0);for(const a of [-.65,.65])for(const b of [-.58,.58])add(new THREE.CylinderGeometry(.27,.27,.16,10),dark,a,.34,b).rotation.x=Math.PI/2;add(new THREE.BoxGeometry(.22,1.6,.22),wood,0,1.55,0);add(new THREE.BoxGeometry(.14,1.25,.14),steel,.28,1.65,0);}
+ else if(kind==='knight'){add(new THREE.BoxGeometry(1.45,.82,.68),leather,0,.85,0);add(new THREE.SphereGeometry(.38,10,8),leather,.62,1.03,0);for(const a of [-.48,.48])for(const b of [-.25,.25])add(new THREE.CylinderGeometry(.12,.14,.65,7),dark,a,.43,b);add(new THREE.CylinderGeometry(.27,.32,.85,8),team,-.12,1.55,0);add(new THREE.SphereGeometry(.23,10,8),skin,-.12,2.1,0);add(new THREE.ConeGeometry(.29,.35,6),steel,-.12,2.38,0);add(new THREE.BoxGeometry(.08,1.1,.1),steel,.45,1.9,0).rotation.z=-.2;}
+ else{add(new THREE.CylinderGeometry(.34,.43,1.05,8),kind==='pikeman'?steel:team,0,1.05,0);add(new THREE.SphereGeometry(.25,10,8),skin,0,1.75,0);add(new THREE.ConeGeometry(.29,.4,6),kind==='pikeman'?steel:dark,0,2.05,0);add(new THREE.BoxGeometry(.42,.12,.3),team,0,1.28,.34);
+ if(kind==='archer'){const bow=add(new THREE.TorusGeometry(.43,.045,6,16,Math.PI),wood,.48,1.2,0);bow.rotation.z=Math.PI/2;add(new THREE.CylinderGeometry(.035,.035,1.25,6),wood,.62,1.55,0).rotation.z=-.18;}
+ else if(kind==='pikeman'){add(new THREE.CylinderGeometry(.045,.045,2.2,6),wood,.5,2.05,0).rotation.z=-.13;add(new THREE.ConeGeometry(.13,.38,6),steel,.64,3.16,0);}
+ else add(new THREE.BoxGeometry(.09,1.15,.12),steel,.48,1.35,0).rotation.z=-.25;}
+ g.position.set(x,0,z);g.userData.kind=kind;scene.add(g);return g;
+}
 const visuals=new Map();let myId=null,myColor='#b84a3a',gameState=null,selected=null,moveMode=false,rotateMode=false,ws;
 function sync(s){gameState=s;const alive=new Set();for(const [pid,p] of Object.entries(s.players)){if(pid===myId){for(const k of ['gold','wood','food','stone'])document.getElementById(k).textContent=Math.floor(p[k]);document.getElementById('score').textContent='Control score: '+Math.floor(p.score||0);}
 for(const item of [...p.buildings,...p.units]){alive.add(item.id);if(!visuals.has(item.id)){const v=p.buildings.includes(item)?building(item.kind,item.x,item.z,p.color):unit(item.kind,item.x,item.z,p.color);v.userData.item=item;v.userData.owner=pid;visuals.set(item.id,v)}else{const v=visuals.get(item.id);v.position.x=item.x;v.position.z=item.z}}
 }for(const [id,v] of visuals){if(!alive.has(id)){scene.remove(v);visuals.delete(id)}}}
 function notice(t){const el=document.querySelector('#toast');el.textContent=t;el.style.opacity=1;clearTimeout(notice.timer);notice.timer=setTimeout(()=>el.style.opacity=0,2300)}
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
-document.querySelector('#joinbtn').onclick=()=>{ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);ws.onopen=()=>send({type:'join',name:document.querySelector('#playername').value,room:document.querySelector('#roomcode').value});ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='welcome'){myId=m.id;myColor=m.color;document.querySelector('#realm').textContent='Realm: '+m.room+' · You: '+document.querySelector('#playername').value;document.querySelector('#join').style.display='none';notice('Welcome to the realm!')}if(m.type==='state'){sync(m);renderChat(m.chat||[])}if(m.type==='notice')notice(m.text)};ws.onclose=()=>notice('Connection lost. Refresh to rejoin.')};
+const joinButton=document.querySelector('#joinbtn');
+function joinRealm(){
+ if(ws&&ws.readyState===WebSocket.CONNECTING)return;
+ if(ws&&ws.readyState===WebSocket.OPEN)return;
+ const name=document.querySelector('#playername').value.trim()||'Lord';
+ const room=document.querySelector('#roomcode').value.trim()||'KINGDOM';
+ joinButton.disabled=true;joinButton.textContent='Connecting…';
+ try{ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);}
+ catch(err){joinButton.disabled=false;joinButton.textContent='Join multiplayer realm';notice('Could not start connection.');return;}
+ ws.onopen=()=>send({type:'join',name,room});
+ ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return;}
+  if(m.type==='welcome'){myId=m.id;myColor=m.color;document.querySelector('#realm').textContent='Realm: '+m.room+' · You: '+name;document.querySelector('#join').style.display='none';joinButton.disabled=false;joinButton.textContent='Join multiplayer realm';notice('Welcome to the realm!');}
+  if(m.type==='state'){sync(m);renderChat(m.chat||[]);}
+  if(m.type==='notice')notice(m.text);
+ };
+ ws.onerror=()=>notice('Connection failed. Check that the Render Web Service is live.');
+ ws.onclose=()=>{joinButton.disabled=false;joinButton.textContent='Join multiplayer realm';if(!myId)notice('Could not join. Check the Render deployment and try again.');else notice('Connection lost. Refresh to rejoin.');};
+}
+joinButton.addEventListener('click',joinRealm);
+document.querySelector('#roomcode').addEventListener('keydown',e=>{if(e.key==='Enter')joinRealm()});
+document.querySelector('#playername').addEventListener('keydown',e=>{if(e.key==='Enter')joinRealm()});
 document.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>{if(!myId){notice('Join a realm first.');return}send({type:'action',kind:b.dataset.kind,x:(Math.random()-.5)*8,z:(Math.random()-.5)*8})});
 function renderChat(chat){const el=document.querySelector('#chatlog');el.innerHTML=chat.map(c=>'<div><b style="color:#e8bd70">'+escapeHtml(c.name)+':</b> '+escapeHtml(c.text)+'</div>').join('');el.scrollTop=el.scrollHeight}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
