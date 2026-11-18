@@ -20,9 +20,10 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 const WORLD_W=4800,WORLD_D=3600,WORLD_HALF_X=WORLD_W/2,WORLD_HALF_Z=WORLD_D/2;
+const isMobile=matchMedia("(max-width:700px), (pointer:coarse)").matches;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x9ab8c2);scene.fog=new THREE.Fog(0x9ab8c2,isMobile?950:1500,isMobile?3000:4300);
 const camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.5,12000);camera.position.set(780,900,1120);
-const isMobile=matchMedia("(max-width:700px), (pointer:coarse)").matches;const renderer=new THREE.WebGLRenderer({antialias:!isMobile,powerPreference:"high-performance"});renderer.setPixelRatio(Math.min(devicePixelRatio,isMobile?1.15:1.5));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;renderer.outputColorSpace=THREE.SRGBColorSpace;document.querySelector('#game').appendChild(renderer.domElement);
+const renderer=new THREE.WebGLRenderer({antialias:!isMobile,powerPreference:"high-performance"});renderer.setPixelRatio(Math.min(devicePixelRatio,isMobile?1.15:1.5));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;renderer.outputColorSpace=THREE.SRGBColorSpace;document.querySelector('#game').appendChild(renderer.domElement);
 scene.add(new THREE.HemisphereLight(0xe5f1ff,0x65734c,1.75));const fillLight=new THREE.DirectionalLight(0x9dbed0,.55);fillLight.position.set(35,22,-30);scene.add(fillLight);const sun=new THREE.DirectionalLight(0xffe2b0,2.45);sun.position.set(-25,45,20);sun.castShadow=true;sun.shadow.mapSize.set(isMobile?768:1536,isMobile?768:1536);sun.shadow.camera.left=-1300;sun.shadow.camera.right=1300;sun.shadow.camera.top=1100;sun.shadow.camera.bottom=-1100;sun.shadow.camera.near=1;sun.shadow.camera.far=5000;sun.shadow.bias=-0.00015;scene.add(sun);
 const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,0,0);controls.maxPolarAngle=Math.PI/2.04;controls.minDistance=18;controls.maxDistance=5200;controls.enableDamping=true;
 const mat=(c,r=.85)=>new THREE.MeshStandardMaterial({color:c,roughness:r});
@@ -94,22 +95,25 @@ function updateRecruitUI(){const el=document.querySelector('#selectedbuilding');
 function notice(t){const el=document.querySelector('#toast');el.textContent=t;el.style.opacity=1;clearTimeout(notice.timer);notice.timer=setTimeout(()=>el.style.opacity=0,2300)}
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
 const joinButton=document.querySelector('#joinbtn');
+let joinTimer=null;
+function resetJoinButton(message){if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}joinButton.disabled=false;joinButton.textContent='Join multiplayer realm';if(message)notice(message);}
 function joinRealm(){
  if(ws&&ws.readyState===WebSocket.CONNECTING)return;
  if(ws&&ws.readyState===WebSocket.OPEN)return;
  const name=document.querySelector('#playername').value.trim()||'Lord';
  const room=document.querySelector('#roomcode').value.trim()||'KINGDOM';
- joinButton.disabled=true;joinButton.textContent='Connecting…';
+ joinButton.disabled=true;joinButton.textContent='Loading…';
  try{ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);}
- catch(err){joinButton.disabled=false;joinButton.textContent='Join multiplayer realm';notice('Could not start connection.');return;}
- ws.onopen=()=>send({type:'join',name,room});
+ catch(err){resetJoinButton('Could not start connection. Try again.');return;}
+ joinTimer=setTimeout(()=>{if(!myId&&ws&&ws.readyState!==WebSocket.OPEN){try{ws.close();}catch{}resetJoinButton('Connection timed out. Check the game server and try again.');}},12000);
+ ws.onopen=()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'join',name,room}));};
  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return;}
-  if(m.type==='welcome'){myId=m.id;myColor=m.color;document.querySelector('#realm').textContent='Realm: '+m.room+' · You: '+name;document.querySelector('#join').style.display='none';joinButton.disabled=false;joinButton.textContent='Join multiplayer realm';notice('Welcome to the realm!');}
+  if(m.type==='welcome'){if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}myId=m.id;myColor=m.color;document.querySelector('#realm').textContent='Realm: '+m.room+' · You: '+name;document.querySelector('#join').style.display='none';joinButton.disabled=false;joinButton.textContent='Join multiplayer realm';notice('Welcome to the realm!');}
   if(m.type==='state'){sync(m);renderChat(m.chat||[]);}
   if(m.type==='notice')notice(m.text);
  };
- ws.onerror=()=>{notice('Connection error. Make sure the game is opened from its live Render URL.');};
- ws.onclose=()=>{joinButton.disabled=false;joinButton.textContent='Join multiplayer realm';if(!myId)notice('Could not join. Check the Render service and try again.');else notice('Connection lost. Refresh to rejoin.');};
+ ws.onerror=()=>{resetJoinButton('Connection error. Check that the game server is running, then try again.');};
+ ws.onclose=()=>{if(!myId)resetJoinButton('Could not join. Check the server and try again.');else{if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}notice('Connection lost. Refresh to rejoin.');}};
 }
 joinButton.addEventListener('click',joinRealm);
 document.querySelector('#roomcode').addEventListener('keydown',e=>{if(e.key==='Enter')joinRealm()});
