@@ -118,7 +118,7 @@ wss.on("connection",ws=>{
    const px=Number(msg.x),pz=Number(msg.z);
    const item={id:"i"+nextId++,kind,x:isBuilding?clamp(Number.isFinite(px)?px:me.x,-2370,2370):clamp(me.x+clamp(Number.isFinite(px)?px:0,-5,5),-2370,2370),z:isBuilding?clamp(Number.isFinite(pz)?pz:0,-1770,1770):clamp(Number.isFinite(pz)?pz:0,-5,5),owner:playerId};
    if(isBuilding){
-    if(kind==="dock"&&!findNearbySea(item.x,item.z,300)){notice(ws,"Build the harbor near the island shoreline so ships can launch.");return;}
+    if(kind==="dock"&&(terrainAt(item.x,item.z)==="sea"||terrainAt(item.x,item.z)==="river"||!findNearbySea(item.x,item.z,300))){notice(ws,"Place the harbor on land close to the island shoreline so ships can launch.");return;}
     const nearEnemyCastle=allItems(room).some(other=>other.kind==="castle"&&other.owner!==playerId&&distance(item,other)<175);
     if(nearEnemyCastle){notice(ws,"That blueprint is too close to an enemy castle. Choose a safer location.");return;}
     if(kind==="wall"){
