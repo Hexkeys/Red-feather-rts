@@ -32,6 +32,11 @@ The `/health` endpoint is available for service health checks. Render Web Servic
 - Shared multiplayer rooms, player kingdom colors, synchronized buildings/units, and realm chat.
 - Right-click (or tap on touchscreens) your units and a destination to issue a move order.
 - Server-authoritative unit movement, automatic nearby combat, unit health, and defensive tower attacks.
+- Tactical terrain: forests favor archers and protect defenders, hills improve ranged attacks, marsh slows knights, and roads speed movement.
+- Unit counters: pikemen are strong against knights, knights pressure archers, and archers are effective against siege units.
+- Strategic landmarks: hold three neutral map objectives with nearby troops to earn control score and a small income bonus.
+- Army supply limits tied to houses, plus ongoing food upkeep so farms and logistics matter more than simply stockpiling gold.
+- Terrain legend, landmark markers, and control score display in the Kingdom panel.
 
 ## Controls
 
