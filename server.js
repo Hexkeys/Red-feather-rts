@@ -12,19 +12,18 @@ const rooms = new Map();
 let nextId = 1;
 
 const COSTS = {
-  house:{wood:90}, farm:{wood:65}, lumberyard:{wood:80}, quarry:{wood:80,stone:25}, market:{wood:100,stone:40}, barracks:{wood:120,stone:35}, tower:{wood:55,stone:70}, dock:{wood:150,stone:40},
-  soldier:{gold:45,food:35}, archer:{gold:55,wood:15,food:30}, knight:{gold:110,food:55},
-  pikeman:{gold:65,wood:10,food:40}, siege:{gold:160,wood:90}, ship:{gold:130,wood:120,food:25}
+  house:{wood:90}, farm:{wood:65}, lumberyard:{wood:80}, quarry:{wood:80,stone:25}, market:{wood:100,stone:40}, barracks:{wood:120,stone:35}, archery:{wood:100,stone:25}, stable:{wood:150,stone:60}, siegeworkshop:{wood:180,stone:100}, tower:{wood:55,stone:70}, dock:{wood:150,stone:40},
+  soldier:{gold:45,food:35}, menatarms:{gold:85,food:45}, archer:{gold:55,wood:15,food:30}, crossbow:{gold:75,wood:25,food:35}, knight:{gold:110,food:55}, lightcavalry:{gold:85,food:50},
+  pikeman:{gold:65,wood:10,food:40}, siege:{gold:160,wood:90}, engineer:{gold:95,wood:35,food:30}, ship:{gold:130,wood:120,food:25}
 };
 const UNIT_STATS = {
-  soldier:{hp:100,damage:12,range:2.1,speed:3.3},
-  archer:{hp:65,damage:9,range:8,speed:3.0},
-  knight:{hp:180,damage:22,range:2.5,speed:4.6},
+  soldier:{hp:100,damage:12,range:2.1,speed:3.3}, menatarms:{hp:155,damage:19,range:2.2,speed:2.8},
+  archer:{hp:65,damage:9,range:8,speed:3.0}, crossbow:{hp:85,damage:16,range:8.5,speed:2.5},
+  knight:{hp:180,damage:22,range:2.5,speed:4.6}, lightcavalry:{hp:115,damage:15,range:2.2,speed:5.4},
   pikeman:{hp:125,damage:17,range:2.3,speed:3.0},
-  siege:{hp:220,damage:38,range:10,speed:1.5},
-  ship:{hp:260,damage:25,range:9,speed:2.4}
+  siege:{hp:220,damage:38,range:10,speed:1.5}, engineer:{hp:90,damage:7,range:1.8,speed:2.7}, ship:{hp:260,damage:25,range:9,speed:2.4}
 };
-const BUILDING_STATS = {house:{hp:260},farm:{hp:180},lumberyard:{hp:220},quarry:{hp:260},market:{hp:300},barracks:{hp:500},tower:{hp:420,damage:18,range:11},dock:{hp:450}};
+const BUILDING_STATS = {house:{hp:260},farm:{hp:180},lumberyard:{hp:220},quarry:{hp:260},market:{hp:300},barracks:{hp:500},archery:{hp:420},stable:{hp:480},siegeworkshop:{hp:520},tower:{hp:420,damage:18,range:11},dock:{hp:450}};
 const BUILDINGS = new Set(Object.keys(BUILDING_STATS));
 const UNITS = new Set(Object.keys(UNIT_STATS));
 
@@ -49,11 +48,12 @@ function terrainAttack(unit,target){
  if(t==="forest"){if(unit.kind==="archer")m*=1.22;if(unit.kind==="knight")m*=.88;}
  if(t==="hill"&&(unit.kind==="archer"||unit.kind==="siege"))m*=1.2;
  if(t==="marsh"&&unit.kind==="knight")m*=.78;
- if(unit.kind==="pikeman"&&target.kind==="knight")m*=1.65;
+ if(unit.kind==="pikeman"&&(target.kind==="knight"||target.kind==="lightcavalry"))m*=1.65;
  if(unit.kind==="archer"&&target.kind==="siege")m*=1.25;
  if(unit.kind==="knight"&&target.kind==="archer")m*=1.25;
  return m;
 }
+function structureDamage(unit,target){let m=1;if(target.category!=="building")return m;if(unit.kind==="siege")m=3.2;else if(unit.kind==="engineer")m=1.8;else if(unit.kind==="knight"||unit.kind==="menatarms")m=1.15;else if(unit.kind==="archer"||unit.kind==="crossbow"||unit.kind==="ship")m=.45;else m=.7;if(target.kind==="tower"&&unit.kind!=="siege"&&unit.kind!=="engineer")m*=.8;return m;}
 function terrainSpeed(unit){const t=terrainAt(unit.x,unit.z);return t==="road"?1.22:t==="marsh"?(unit.kind==="knight"?.58:.78):t==="forest"?.88:1;}
 function allItems(room){const out=[];for(const p of Object.values(room.state.players)){for(const b of p.buildings)out.push({...b,owner:p.id,category:"building"});for(const u of p.units)out.push({...u,owner:p.id,category:"unit"});}return out;}
 
@@ -82,7 +82,7 @@ wss.on("connection",ws=>{
    const kind=String(msg.kind||""),cost=COSTS[kind];if(!cost)return;
    const supply=8+me.buildings.filter(b=>b.kind==="house").length*4;
    if(UNITS.has(kind)&&me.units.length>=supply){notice(ws,"Army supply is full. Build houses to support more units.");return;}
-   if(UNITS.has(kind)){const facility=me.buildings.find(b=>b.id===String(msg.buildingId));const required=kind==="ship"?"dock":"barracks";if(!facility||facility.kind!==required){notice(ws,"Select your "+(required==="dock"?"Harbor":"Barracks")+" to recruit this unit.");return;}}
+   if(UNITS.has(kind)){const facility=me.buildings.find(b=>b.id===String(msg.buildingId));const required=kind==="ship"?"dock":(kind==="archer"||kind==="crossbow")?"archery":(kind==="knight"||kind==="lightcavalry")?"stable":(kind==="siege"||kind==="engineer")?"siegeworkshop":"barracks";if(!facility||facility.kind!==required){const labels={dock:"Harbor",archery:"Archery Range",stable:"Stable",siegeworkshop:"Siege Workshop",barracks:"Barracks"};notice(ws,"Select your "+labels[required]+" to recruit this unit.");return;}}
    if(Object.entries(cost).some(([k,v])=>me[k]<v)){notice(ws,"Not enough resources.");return;}
    const isBuilding=BUILDINGS.has(kind);
    const px=Number(msg.x),pz=Number(msg.z);
@@ -134,7 +134,7 @@ setInterval(()=>{
    let target=null,best=Infinity;
    for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0)continue;
     const dist=distance(u,enemy);if(dist<=u.range&&dist<best){best=dist;target=enemy;}}
-   if(target){const owner=room.state.players[target.owner];const list=target.category==="unit"?owner.units:owner.buildings;const actual=list.find(x=>x.id===target.id);if(actual)actual.hp-=u.damage*terrainAttack(u,actual)*dt;}
+   if(target){const owner=room.state.players[target.owner];const list=target.category==="unit"?owner.units:owner.buildings;const actual=list.find(x=>x.id===target.id);if(actual)actual.hp-=u.damage*terrainAttack(u,actual)*structureDamage(u,target)*dt;}
   }
   for(const p of players)for(const tower of p.buildings.filter(b=>b.kind==="tower")){
    let target=null,best=Infinity;for(const enemy of items){if(enemy.owner===p.id||enemy.category!=="unit"||enemy.hp<=0)continue;const d=distance(tower,enemy);if(d<=tower.range&&d<best){best=d;target=enemy;}}
