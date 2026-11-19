@@ -2,6 +2,75 @@ const express = require("express");
 const http = require("http");
 const { WebSocketServer } = require("ws");
 const path = require("path");
+const fs = require("fs");
+const crypto = require("crypto");
+
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+const SAVE_FILE = path.join(DATA_DIR, "red-feather-save.json");
+let store = { accounts: {}, rooms: {} };
+function loadStore() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (fs.existsSync(SAVE_FILE)) {
+      const loaded = JSON.parse(fs.readFileSync(SAVE_FILE, "utf8"));
+      if (loaded && typeof loaded === "object") store = {
+        accounts: loaded.accounts && typeof loaded.accounts === "object" ? loaded.accounts : {},
+        rooms: loaded.rooms && typeof loaded.rooms === "object" ? loaded.rooms : {}
+      };
+    }
+  } catch (error) {
+    console.error("Could not load saved game data:", error.message);
+  }
+}
+function saveStore() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    for (const [code, room] of rooms) {
+      store.rooms[code] = {
+        state: room.state,
+        playerAccounts: Object.fromEntries(room.playerAccounts),
+        nextId
+      };
+    }
+    const temp = SAVE_FILE + ".tmp";
+    fs.writeFileSync(temp, JSON.stringify(store), { mode: 0o600 });
+    fs.renameSync(temp, SAVE_FILE);
+  } catch (error) {
+    console.error("Could not save game data:", error.message);
+  }
+}
+function normalizeUsername(value) {
+  return String(value || "").trim().toLowerCase();
+}
+function validUsername(value) {
+  return /^[a-z0-9_]{3,16}$/.test(value);
+}
+function hashPassword(password, salt) {
+  return crypto.scryptSync(password, salt, 64);
+}
+function authenticate(mode, username, password) {
+  if (!validUsername(username)) return { ok: false, error: "Username must be 3–16 letters, numbers, or underscores." };
+  if (typeof password !== "string" || password.length < 8 || password.length > 128) {
+    return { ok: false, error: "Password must be 8–128 characters." };
+  }
+  const existing = store.accounts[username];
+  if (mode === "register") {
+    if (existing) return { ok: false, error: "That username is already registered. Log in instead." };
+    const salt = crypto.randomBytes(16).toString("hex");
+    const hash = hashPassword(password, salt).toString("hex");
+    store.accounts[username] = { salt, hash };
+    saveStore();
+    return { ok: true };
+  }
+  if (mode !== "login" || !existing) return { ok: false, error: "Username or password is incorrect." };
+  const actual = hashPassword(password, existing.salt);
+  const expected = Buffer.from(existing.hash, "hex");
+  if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) {
+    return { ok: false, error: "Username or password is incorrect." };
+  }
+  return { ok: true };
+}
+loadStore();
 
 const app = express();
 app.use(express.static(path.join(__dirname, "public")));
@@ -28,7 +97,15 @@ const BUILDINGS = new Set(Object.keys(BUILDING_STATS));
 const UNITS = new Set(Object.keys(UNIT_STATS));
 
 function roomFor(code) {
-  if (!rooms.has(code)) rooms.set(code,{players:new Map(),state:{players:{},chat:[]}});
+  if (!rooms.has(code)) {
+    const saved = store.rooms[code];
+    if (saved && Number.isFinite(saved.nextId)) nextId = Math.max(nextId, saved.nextId);
+    rooms.set(code, {
+      players: new Map(),
+      playerAccounts: new Map(Object.entries(saved?.playerAccounts || {})),
+      state: saved?.state && typeof saved.state === "object" ? saved.state : { players: {}, chat: [] }
+    });
+  }
   return rooms.get(code);
 }
 function send(ws,data){if(ws.readyState===1)ws.send(JSON.stringify(data));}
@@ -106,23 +183,46 @@ wss.on("connection",ws=>{
  let room,playerId;
  ws.on("message",raw=>{
   let msg;try{msg=JSON.parse(raw.toString())}catch{return}
+  if (msg.type === "auth") {
+   if (room || ws.authUser) return;
+   const username = normalizeUsername(msg.username);
+   const result = authenticate(msg.mode, username, msg.password);
+   if (!result.ok) { send(ws, { type: "auth", ok: false, error: result.error }); return; }
+   ws.authUser = username;
+   send(ws, { type: "auth", ok: true, username });
+   return;
+  }
   if(msg.type==="join"){
    if(room)return;
+   if(!ws.authUser){notice(ws,"Create an account or log in before joining.");return;}
    const code=String(msg.room||"KINGDOM").toUpperCase().replace(/[^A-Z0-9_-]/g,"").slice(0,12)||"KINGDOM";
    const name=String(msg.name||"Lord").replace(/[^a-z0-9 _-]/gi,"").trim().slice(0,16)||"Lord";
    room=roomFor(code);
    if(room.players.size>=8){notice(ws,"This realm is full (8 players).");ws.close();return;}
-   playerId="p"+nextId++;
-   const color=["#b84a3a","#4778b8","#6d9b58","#a17ac2","#c08a36","#4b9b9b","#9b5478","#858c4b"][room.players.size];
+   const savedEntry=[...room.playerAccounts.entries()].find(([,user])=>user===ws.authUser);
+   if(savedEntry && room.players.has(savedEntry[0])){notice(ws,"This account is already playing in that realm.");ws.close();return;}
    const spawnPoints=[[-1300,-650],[-650,-900],[650,-900],[1300,-650],[1300,650],[650,900],[-650,900],[-1300,650]];
-   const [spawnX,spawnZ]=spawnPoints[room.players.size];
-   room.players.set(playerId,{ws,name,color});
-   const castle={id:"i"+nextId++,kind:"castle",x:spawnX,z:spawnZ,owner:playerId,...BUILDING_STATS.castle};
-   const builder={id:"i"+nextId++,kind:"builder",x:spawnX+9,z:spawnZ+8,owner:playerId,...UNIT_STATS.builder,maxHp:UNIT_STATS.builder.hp,tx:spawnX+9,tz:spawnZ+8};
-   room.state.players[playerId]={id:playerId,name,color,gold:300,wood:260,food:220,stone:140,score:0,buildings:[castle],units:[builder],x:spawnX,z:spawnZ,defeated:false};
+   if(!savedEntry && room.playerAccounts.size>=8){notice(ws,"This realm already has 8 registered kingdoms.");ws.close();return;}
+   if(savedEntry){
+    playerId=savedEntry[0];
+   }else{
+    playerId="p"+nextId++;
+    const slot=room.playerAccounts.size;
+    const color=["#b84a3a","#4778b8","#6d9b58","#a17ac2","#c08a36","#4b9b9b","#9b5478","#858c4b"][slot];
+    const [spawnX,spawnZ]=spawnPoints[slot];
+    const castle={id:"i"+nextId++,kind:"castle",x:spawnX,z:spawnZ,owner:playerId,...BUILDING_STATS.castle};
+    const builder={id:"i"+nextId++,kind:"builder",x:spawnX+9,z:spawnZ+8,owner:playerId,...UNIT_STATS.builder,maxHp:UNIT_STATS.builder.hp,tx:spawnX+9,tz:spawnZ+8};
+    room.state.players[playerId]={id:playerId,name,color,gold:300,wood:260,food:220,stone:140,score:0,buildings:[castle],units:[builder],x:spawnX,z:spawnZ,defeated:false};
+    room.playerAccounts.set(playerId,ws.authUser);
+   }
+   const savedPlayer=room.state.players[playerId];
+   if(!savedPlayer){notice(ws,"Saved kingdom data is missing. Please contact the game owner.");ws.close();return;}
+   savedPlayer.name=name || savedPlayer.name;
+   room.players.set(playerId,{ws,name:savedPlayer.name,color:savedPlayer.color,username:ws.authUser});
    ws.roomCode=code;ws.playerId=playerId;
-   send(ws,{type:"welcome",id:playerId,room:code,color});
-   broadcast(room,snapshot(room));broadcast(room,{type:"notice",text:name+" joined the realm."});return;
+   send(ws,{type:"welcome",id:playerId,room:code,color:savedPlayer.color,name:savedPlayer.name});
+   saveStore();
+   broadcast(room,snapshot(room));broadcast(room,{type:"notice",text:savedPlayer.name+" joined the realm."});return;
   }
   if(!room||!playerId)return;
   const me=room.state.players[playerId];if(!me)return;
@@ -201,9 +301,9 @@ wss.on("connection",ws=>{
   }
  });
  ws.on("close",()=>{
-  if(room&&playerId){const p=room.players.get(playerId);room.players.delete(playerId);delete room.state.players[playerId];
+  if(room&&playerId){const p=room.players.get(playerId);room.players.delete(playerId);
    if(p){broadcast(room,snapshot(room));broadcast(room,{type:"notice",text:p.name+" left the realm."});}
-   if(!room.players.size)rooms.delete(ws.roomCode);
+   saveStore();
   }
  });
 });
@@ -250,5 +350,14 @@ setInterval(()=>{
   broadcast(room,snapshot(room));
  }
 },250);
+const saveTimer = setInterval(saveStore, 2000);
 const port=process.env.PORT||3000;
-server.listen(port,"0.0.0.0",()=>console.log("Red Feather RTS listening on "+port));
+server.listen(port,"0.0.0.0",()=>console.log("Red Feather RTS listening on "+port+"; save file: "+SAVE_FILE));
+function shutdown() {
+  clearInterval(saveTimer);
+  saveStore();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 5000).unref();
+}
+process.once("SIGTERM", shutdown);
+process.once("SIGINT", shutdown);
