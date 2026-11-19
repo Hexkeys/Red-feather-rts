@@ -30,6 +30,7 @@ function saveStore() {
       store.rooms[code] = {
         state: room.state,
         playerAccounts: Object.fromEntries(room.playerAccounts),
+        playerSlots: Object.fromEntries(room.playerSlots),
         parkedPlayers: room.parkedPlayers,
         nextId
       };
@@ -113,6 +114,8 @@ function roomFor(code) {
     rooms.set(code, {
       players: new Map(),
       playerAccounts: new Map(Object.entries(saved?.playerAccounts || {})),
+      // Spawn slots remain assigned even while a kingdom is parked offline.
+      playerSlots: new Map(Object.entries(saved?.playerSlots || {})),
       parkedPlayers,
       state: restoredState
     });
@@ -213,18 +216,35 @@ wss.on("connection",ws=>{
    const savedEntry=[...room.playerAccounts.entries()].find(([,user])=>user===ws.authUser);
    if(savedEntry && room.players.has(savedEntry[0])){notice(ws,"This account is already playing in that realm.");ws.close();return;}
    const spawnPoints=[[-1300,-650],[-650,-900],[650,-900],[1300,-650],[1300,650],[650,900],[-650,900],[-1300,650]];
-   if(!savedEntry && room.playerAccounts.size>=8){notice(ws,"This realm already has 8 registered kingdoms.");ws.close();return;}
+   const spawnColors=["#b84a3a","#4778b8","#6d9b58","#a17ac2","#c08a36","#4b9b9b","#9b5478","#858c4b"];
+   // Migrate older saves by assigning existing accounts their original order-based slots.
+   for (const [id] of room.playerAccounts) {
+    if (!room.playerSlots.has(id)) {
+     const used=new Set([...room.playerSlots.values()].map(Number));
+     const legacySlot=[...room.playerAccounts.keys()].indexOf(id);
+     if (legacySlot>=0 && legacySlot<spawnPoints.length && !used.has(legacySlot)) room.playerSlots.set(id,String(legacySlot));
+    }
+   }
    if(savedEntry){
     playerId=savedEntry[0];
    }else{
+    const usedSlots=new Set([...room.playerSlots.values()].map(Number));
+    const slot=spawnPoints.findIndex((_,index)=>!usedSlots.has(index));
+    if(slot<0){notice(ws,"This realm has no unclaimed kingdom spawn positions (8 maximum).");ws.close();return;}
     playerId="p"+nextId++;
-    const slot=room.playerAccounts.size;
-    const color=["#b84a3a","#4778b8","#6d9b58","#a17ac2","#c08a36","#4b9b9b","#9b5478","#858c4b"][slot];
+    room.playerSlots.set(playerId,String(slot));
+    const color=spawnColors[slot];
     const [spawnX,spawnZ]=spawnPoints[slot];
     const castle={id:"i"+nextId++,kind:"castle",x:spawnX,z:spawnZ,owner:playerId,...BUILDING_STATS.castle};
     const builder={id:"i"+nextId++,kind:"builder",x:spawnX+9,z:spawnZ+8,owner:playerId,...UNIT_STATS.builder,maxHp:UNIT_STATS.builder.hp,tx:spawnX+9,tz:spawnZ+8};
     room.state.players[playerId]={id:playerId,name,color,gold:300,wood:260,food:220,stone:140,score:0,buildings:[castle],units:[builder],x:spawnX,z:spawnZ,defeated:false};
     room.playerAccounts.set(playerId,ws.authUser);
+   }
+   if (!room.playerSlots.has(playerId)) {
+    const usedSlots=new Set([...room.playerSlots.values()].map(Number));
+    const slot=spawnPoints.findIndex((_,index)=>!usedSlots.has(index));
+    if(slot<0){notice(ws,"No free preset kingdom position is available for this account.");ws.close();return;}
+    room.playerSlots.set(playerId,String(slot));
    }
    if (!room.state.players[playerId] && room.parkedPlayers[playerId]) {
     room.state.players[playerId] = room.parkedPlayers[playerId];
