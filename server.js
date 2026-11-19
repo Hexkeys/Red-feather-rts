@@ -226,10 +226,12 @@ setInterval(()=>{
   for(const p of players)if(!p.defeated){for(const blueprint of p.buildings.filter(b=>b.underConstruction)){let worker=p.units.find(u=>u.kind==="builder"&&u.id===blueprint.builderId);if(!worker){worker=p.units.find(u=>u.kind==="builder"&&!u.assignedBuildingId);if(!worker){const castle=p.buildings.find(b=>b.kind==="castle");if(castle){worker={id:"i"+nextId++,kind:"builder",x:castle.x+9,z:castle.z+8,owner:p.id,...UNIT_STATS.builder,maxHp:UNIT_STATS.builder.hp,tx:castle.x+9,tz:castle.z+8};p.units.push(worker);}}if(worker){worker.assignedBuildingId=blueprint.id;blueprint.builderId=worker.id;worker.tx=blueprint.x;worker.tz=blueprint.z;}}}}
   const items=allItems(room);
   for(const p of players)if(!p.defeated)for(const u of p.units){
-   let target=null,best=Infinity;
-   for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||u.kind==="builder")continue;const dist=distance(u,enemy);if(dist<=u.range&&dist<best){best=dist;target=enemy;}}
-   const moveTarget=u.kind==="ship"&&u.path?.length?u.path[0]:{x:u.tx,z:u.tz},dx=moveTarget.x-u.x,dz=moveTarget.z-u.z,d=Math.hypot(dx,dz);
-   const stance=u.stance||"guard";if(stance!=="hold"&&d>.15&&!(target&&u.orderMode==="attack")){const step=Math.min(d,u.speed*terrainSpeed(u)*dt);if(u.kind==="ship"&&d<=step+.01){u.x=moveTarget.x;u.z=moveTarget.z;if(u.path?.length)u.path.shift();}else{const nx=u.x+dx/d*step,nz=u.z+dz/d*step;if(u.kind!=="ship"||terrainAt(nx,nz)==="sea"){u.x=nx;u.z=nz;}}}
+   let target=null,best=Infinity,pursuitTarget=null,pursuitDistance=Infinity;
+   for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||u.kind==="builder")continue;const dist=distance(u,enemy);if(dist<=u.range&&dist<best){best=dist;target=enemy;}if(dist<pursuitDistance){pursuitDistance=dist;pursuitTarget=enemy;}}
+   const stance=u.stance||"guard";
+   const autoTarget=stance==="aggressive"&&pursuitDistance<=26?pursuitTarget:null;
+   const moveTarget=autoTarget?{x:autoTarget.x,z:autoTarget.z}:u.kind==="ship"&&u.path?.length?u.path[0]:{x:u.tx,z:u.tz},dx=moveTarget.x-u.x,dz=moveTarget.z-u.z,d=Math.hypot(dx,dz);
+   if(stance!=="hold"&&d>.15&&!(target&&(u.orderMode==="attack"||stance==="aggressive"))){const step=Math.min(d,u.speed*terrainSpeed(u)*dt);if(u.kind==="ship"&&d<=step+.01){u.x=moveTarget.x;u.z=moveTarget.z;if(u.path?.length)u.path.shift();}else{const nx=u.x+dx/d*step,nz=u.z+dz/d*step;if(u.kind!=="ship"||terrainAt(nx,nz)==="sea"){u.x=nx;u.z=nz;}}}
    if(u.kind==="builder"&&u.assignedBuildingId&&d<5){const blueprint=p.buildings.find(b=>b.id===u.assignedBuildingId);if(blueprint&&blueprint.underConstruction){blueprint.progress=Math.min(1,(blueprint.progress||0)+dt/10);blueprint.hp=blueprint.maxHp*(.12+.88*blueprint.progress);if(blueprint.progress>=1){blueprint.underConstruction=false;delete blueprint.builderId;delete u.assignedBuildingId;u.tx=u.x;u.tz=u.z;u.orderMode="move";}}}
    if(target&&u.kind!=="builder"&&u.damage>0){const owner=room.state.players[target.owner],list=target.category==="unit"?owner.units:owner.buildings,actual=list.find(x=>x.id===target.id);if(actual)actual.hp-=u.damage*terrainAttack(u,actual)*structureDamage(u,target)*terrainCover(actual)*dt;}
   }
