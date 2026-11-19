@@ -294,7 +294,7 @@ function setupGuiPanels(){
  const float=document.getElementById('buildingFloat'),head=document.getElementById('buildingFloatHead');
  document.getElementById('buildingMinimize').onclick=()=>{float.classList.toggle('minimized');document.getElementById('buildingMinimize').textContent=float.classList.contains('minimized')?'+':'−';};
  document.getElementById('buildingClose').onclick=()=>{float.style.display='none';selectedBuilding=null;selectedProductionBuilding=null;updateRecruitUI();};
- const selected=document.getElementById('selectedbuilding');document.getElementById('buildingInfo').appendChild(selected);
+ 
  document.getElementById('buildingProduction').appendChild(document.getElementById('productionPanel'));
  let dragging=false,offsetX=0,offsetY=0;
  head.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;dragging=true;const rect=float.getBoundingClientRect();offsetX=e.clientX-rect.left;offsetY=e.clientY-rect.top;head.setPointerCapture(e.pointerId);});
