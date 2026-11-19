@@ -80,6 +80,23 @@ function authenticate(mode, username, password) {
 }
 loadStore();
 
+// One-time full game reset requested by the owner on 2026-11-19.
+// Accounts are global, so this clears every saved account and realm once.
+const RESET_MARKER = path.join(DATA_DIR, "red-feather-full-reset-2026-11-19.done");
+if (!fs.existsSync(RESET_MARKER)) {
+  try {
+    if (fs.existsSync(SAVE_FILE)) fs.unlinkSync(SAVE_FILE);
+    store = { accounts: {}, rooms: {} };
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(RESET_MARKER, "Completed full realm reset.\n", { flag: "wx", mode: 0o600 });
+    if (!saveStore()) throw new Error("Could not write the empty game save after reset.");
+    console.log("Completed one-time full realm reset: all accounts and realm progress cleared.");
+  } catch (error) {
+    console.error("Full realm reset failed; server startup is being stopped to avoid an incomplete reset:", error.message);
+    process.exit(1);
+  }
+}
+
 const app = express();
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/health", (_req, res) => res.json({ ok: true, game: "Red Feather RTS" }));
