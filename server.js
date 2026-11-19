@@ -38,8 +38,10 @@ function saveStore() {
     const temp = SAVE_FILE + ".tmp";
     fs.writeFileSync(temp, JSON.stringify(store), { mode: 0o600 });
     fs.renameSync(temp, SAVE_FILE);
+    return true;
   } catch (error) {
     console.error("Could not save game data:", error.message);
+    return false;
   }
 }
 function normalizeUsername(value) {
@@ -62,7 +64,10 @@ function authenticate(mode, username, password) {
     const salt = crypto.randomBytes(16).toString("hex");
     const hash = hashPassword(password, salt).toString("hex");
     store.accounts[username] = { salt, hash };
-    saveStore();
+    if (!saveStore()) {
+      delete store.accounts[username];
+      return { ok: false, error: "The server could not save your new account. Please try again later or contact the game owner." };
+    }
     return { ok: true };
   }
   if (mode !== "login" || !existing) return { ok: false, error: "Username or password is incorrect." };
