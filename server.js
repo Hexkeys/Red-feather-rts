@@ -88,12 +88,12 @@ const COSTS = {
   soldier:{gold:45,food:35}, menatarms:{gold:85,food:45}, archer:{gold:55,wood:15,food:30}, crossbow:{gold:75,wood:25,food:35}, knight:{gold:110,food:55}, lightcavalry:{gold:85,food:50},
   pikeman:{gold:65,wood:10,food:40}, siege:{gold:160,wood:90}, engineer:{gold:95,wood:35,food:30}, ship:{gold:130,wood:120,food:25}
 };
-const UNIT_STATS = {builder:{hp:90,damage:0,range:0,speed:3.1},
-  soldier:{hp:100,damage:12,range:2.1,speed:3.3}, menatarms:{hp:155,damage:19,range:2.2,speed:2.8},
-  archer:{hp:65,damage:9,range:8,speed:3.0}, crossbow:{hp:85,damage:16,range:8.5,speed:2.5},
-  knight:{hp:180,damage:22,range:2.5,speed:4.6}, lightcavalry:{hp:115,damage:15,range:2.2,speed:5.4},
-  pikeman:{hp:125,damage:17,range:2.3,speed:3.0},
-  siege:{hp:220,damage:38,range:10,speed:1.5}, engineer:{hp:90,damage:7,range:1.8,speed:2.7}, ship:{hp:260,damage:25,range:9,speed:2.4}
+const UNIT_STATS = {builder:{hp:90,damage:0,range:0,speed:3.1,engageRange:0},
+  soldier:{hp:100,damage:12,range:2.1,speed:3.3,engageRange:34,attackRate:1.05}, menatarms:{hp:155,damage:19,range:2.2,speed:2.8,engageRange:34,attackRate:1.15},
+  archer:{hp:65,damage:10,range:25,speed:3.0,engageRange:42,attackRate:1.35}, crossbow:{hp:85,damage:17,range:21,speed:2.5,engageRange:40,attackRate:1.75},
+  knight:{hp:180,damage:22,range:2.5,speed:4.6,engageRange:38,attackRate:1.05}, lightcavalry:{hp:115,damage:15,range:2.2,speed:5.4,engageRange:38,attackRate:1.0},
+  pikeman:{hp:125,damage:17,range:2.3,speed:3.0,engageRange:34,attackRate:1.1},
+  siege:{hp:220,damage:38,range:18,speed:1.5,engageRange:48,attackRate:2.5}, engineer:{hp:90,damage:7,range:1.8,speed:2.7,engageRange:28,attackRate:1.2}, ship:{hp:260,damage:25,range:16,speed:2.4,engageRange:42,attackRate:1.6}
 };
 const BUILDING_STATS = {castle:{hp:2400},house:{hp:260},farm:{hp:180},lumberyard:{hp:220},quarry:{hp:260},mine:{hp:360},market:{hp:300},barracks:{hp:500},archery:{hp:420},stable:{hp:480},siegeworkshop:{hp:520},tower:{hp:420,damage:18,range:11},wall:{hp:1600},dock:{hp:450}};
 const BUILDINGS = new Set(Object.keys(BUILDING_STATS));
@@ -363,7 +363,7 @@ wss.on("connection",ws=>{
    broadcast(room,snapshot(room));return;
   }
   if(msg.type==="command"){
-   if(!Array.isArray(msg.ids))return;const stance=["guard","hold","aggressive"].includes(msg.stance)?msg.stance:null;if(!stance)return;
+   if(!Array.isArray(msg.ids))return;const stance=["guard","hold"].includes(msg.stance)?msg.stance:null;if(!stance)return;
    const ids=[...new Set(msg.ids.map(String))].slice(0,80);for(const id of ids){const unit=me.units.find(u=>u.id===id);if(unit){unit.stance=stance;if(stance==="hold"){unit.tx=unit.x;unit.tz=unit.z;unit.orderMode="move";}}}
    broadcast(room,snapshot(room));return;
   }
@@ -407,15 +407,40 @@ setInterval(()=>{
   const items=allItems(room);
   for(const p of players)if(!p.defeated)for(const u of p.units){
    let target=null,best=Infinity,pursuitTarget=null,pursuitDistance=Infinity;
-   for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||u.kind==="builder")continue;const dist=distance(u,enemy);if(dist<=u.range&&dist<best){best=dist;target=enemy;}if(dist<pursuitDistance){pursuitDistance=dist;pursuitTarget=enemy;}}
-   const stance=u.stance||"guard";
-   const autoTarget=stance==="aggressive"&&pursuitDistance<=26?pursuitTarget:null;
-   const moveTarget=autoTarget?{x:autoTarget.x,z:autoTarget.z}:u.kind==="ship"&&u.path?.length?u.path[0]:{x:u.tx,z:u.tz},dx=moveTarget.x-u.x,dz=moveTarget.z-u.z,d=Math.hypot(dx,dz);
-   if(stance!=="hold"&&d>.15&&!(target&&(u.orderMode==="attack"||stance==="aggressive"))){const step=Math.min(d,u.speed*terrainSpeed(u)*dt);if(u.kind==="ship"&&d<=step+.01){u.x=moveTarget.x;u.z=moveTarget.z;if(u.path?.length)u.path.shift();}else{const nx=u.x+dx/d*step,nz=u.z+dz/d*step;if(u.kind!=="ship"||terrainAt(nx,nz)==="sea"){u.x=nx;u.z=nz;}}}
+   if(u.kind!=="builder"&&u.damage>0){
+    for(const enemy of items){
+     if(enemy.owner===p.id||enemy.hp<=0||enemy.category!=="unit")continue;
+     const dist=distance(u,enemy);
+     if(dist<=u.range&&dist<best){best=dist;target=enemy;}
+     if(dist<pursuitDistance){pursuitDistance=dist;pursuitTarget=enemy;}
+    }
+    if(!target&&u.orderMode==="attack"){
+     for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||enemy.category!=="building")continue;const dist=distance(u,enemy);if(dist<=u.range&&dist<best){best=dist;target=enemy;}}
+    }
+   }
+   const stance=u.stance==="hold"?"hold":"guard";
+   const manualDistance=distance(u,{x:Number.isFinite(u.tx)?u.tx:u.x,z:Number.isFinite(u.tz)?u.tz:u.z});
+   const hasManualMove=manualDistance>1.2;
+   let moveTarget=u.kind==="ship"&&u.path?.length?u.path[0]:{x:u.tx,z:u.tz};
+   if(stance!=="hold"&&!hasManualMove&&!target&&pursuitTarget&&pursuitDistance<=(u.engageRange||34))moveTarget={x:pursuitTarget.x,z:pursuitTarget.z};
+   const dx=moveTarget.x-u.x,dz=moveTarget.z-u.z,d=Math.hypot(dx,dz);
+   const manualMoving=stance!=="hold"&&hasManualMove;
+   const approaching=stance!=="hold"&&!hasManualMove&&!target&&pursuitTarget&&pursuitDistance<=(u.engageRange||34)&&pursuitDistance>u.range*.9;
+   if(d>.15&&(manualMoving||approaching||(!target&&!pursuitTarget&&stance!=="hold"))){
+    const step=Math.min(d,u.speed*terrainSpeed(u)*dt);
+    if(u.kind==="ship"&&d<=step+.01){u.x=moveTarget.x;u.z=moveTarget.z;if(u.path?.length)u.path.shift();}
+    else{const nx=u.x+dx/d*step,nz=u.z+dz/d*step;if(u.kind!=="ship"||terrainAt(nx,nz)==="sea"){u.x=nx;u.z=nz;}}
+   }
    if(u.kind==="builder"&&u.assignedBuildingId&&d<5){const blueprint=p.buildings.find(b=>b.id===u.assignedBuildingId);if(blueprint&&blueprint.underConstruction){blueprint.progress=Math.min(1,(blueprint.progress||0)+dt/10);blueprint.hp=blueprint.maxHp*(.12+.88*blueprint.progress);if(blueprint.progress>=1){blueprint.underConstruction=false;delete blueprint.builderId;delete u.assignedBuildingId;u.tx=u.x;u.tz=u.z;u.orderMode="move";}}}
-   if(target&&u.kind!=="builder"&&u.damage>0){const owner=room.state.players[target.owner],list=target.category==="unit"?owner.units:owner.buildings,actual=list.find(x=>x.id===target.id);if(actual)actual.hp-=u.damage*terrainAttack(u,actual)*structureDamage(u,target)*terrainCover(actual)*dt;}
+   if(target&&u.kind!=="builder"&&u.damage>0){
+    u.attackCooldown=Math.max(0,(u.attackCooldown||0)-dt);
+    if(u.attackCooldown<=0){
+     const owner=room.state.players[target.owner],list=target.category==="unit"?owner?.units:owner?.buildings,actual=list?.find(x=>x.id===target.id);
+     if(actual){actual.hp-=u.damage*terrainAttack(u,actual)*structureDamage(u,target)*terrainCover(actual);u.attackCooldown=u.attackRate||1.2;u.attackPulse=(u.attackPulse||0)+1;u.attackTargetId=target.id;}
+    }
+   }else if(!target)u.attackCooldown=Math.max(0,(u.attackCooldown||0)-dt);
   }
-  for(const p of players)if(!p.defeated)for(const facility of p.buildings){if(!facility.productionQueue?.length)continue;const job=facility.productionQueue[0];job.remaining-=dt;if(job.remaining<=0){const kind=job.kind,stats=UNIT_STATS[kind];if(stats){let sx=facility.x+7,sz=facility.z+5;if(kind==="ship"){const water=findNearbySea(facility.x,facility.z,300);if(!water){facility.productionQueue.shift();notice(room.players.get(p.id)?.ws,"This harbor has no nearby water. Build it closer to the coast.");continue;}sx=water.x;sz=water.z;}const unit={id:"i"+nextId++,kind,x:sx,z:sz,owner:p.id,...stats,maxHp:stats.hp,tx:sx,tz:sz};p.units.push(unit);}facility.productionQueue.shift();}}
+  for(const p of players)if(!p.defeated)for(const facility of p.buildings){if(!facility.productionQueue?.length)continue;const job=facility.productionQueue[0];job.remaining-=dt;if(job.remaining<=0){const kind=job.kind,stats=UNIT_STATS[kind];if(stats){let sx=facility.x+7,sz=facility.z+5;if(kind==="ship"){const water=findNearbySea(facility.x,facility.z,300);if(!water){facility.productionQueue.shift();notice(room.players.get(p.id)?.ws,"This harbor has no nearby water. Build it closer to the coast.");continue;}sx=water.x;sz=water.z;}const unit={id:"i"+nextId++,kind,x:sx,z:sz,owner:p.id,...stats,maxHp:stats.hp,tx:sx,tz:sz,attackCooldown:0,attackPulse:0,stance:"guard"};p.units.push(unit);}facility.productionQueue.shift();}}
   for(const p of players)if(!p.defeated)for(const tower of p.buildings.filter(b=>b.kind==="tower")){
    let target=null,best=Infinity;for(const enemy of items){if(enemy.owner===p.id||enemy.category!=="unit"||enemy.hp<=0)continue;const d=distance(tower,enemy);if(d<=tower.range&&d<best){best=d;target=enemy;}}
    if(target){const owner=room.state.players[target.owner];const unit=owner?.units.find(u=>u.id===target.id);if(unit)unit.hp-=tower.damage*dt*(terrainAt(unit.x,unit.z)==="forest"?.82:1);}
