@@ -21,6 +21,7 @@
 .gui-minimized h3{margin:0!important;white-space:nowrap}
 .gui-minimized h3 .gui-minimize{margin-left:12px}
 @media(max-width:700px){#buildingFloat{top:auto;bottom:145px;left:12px;transform:none;width:min(300px,calc(100vw - 24px));max-height:42vh}}
+@media(max-width:700px), (pointer:coarse){
 /* Touch-first layout and safe-area support */
 html,body,#game{width:100%;height:100%;height:100dvh}
 #top{top:calc(5px + env(safe-area-inset-top));left:5px;right:5px;gap:5px;flex-wrap:wrap}
@@ -42,6 +43,8 @@ html,body,#game{width:100%;height:100%;height:100dvh}
 #buildingFloat{left:8px;right:8px;bottom:calc(58px + env(safe-area-inset-bottom));top:auto;transform:none;width:auto;max-width:420px;max-height:38dvh;margin:auto}
 #toast{top:calc(58px + env(safe-area-inset-top));max-width:90vw;text-align:center;font-size:12px}
 button,input{font-size:16px}
+
+}
 </style>
 </head>
 <body><div id="game"></div>
