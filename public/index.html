@@ -59,7 +59,7 @@ button,input{font-size:16px}
 <div id="commander" class="panel"><h3>Commander’s table</h3><div class="muted" id="commandstatus">Select troops to issue orders</div><div class="muted" style="margin-top:8px">Formation</div><div class="buildgrid"><button data-formation="line" class="active">Line</button><button data-formation="column">Column</button><button data-formation="wedge">Wedge</button><button data-formation="box">Block</button></div><div class="muted" style="margin-top:8px">Stance</div><div class="buildgrid"><button data-stance="guard" class="active">Guard</button><button data-stance="hold">Hold</button><button data-stance="aggressive">Aggressive</button></div><div class="buildgrid" style="margin-top:8px"><button id="selectall">Select All</button><button id="regroup">Regroup</button><button id="movearmy">Move</button><button id="autoattack">Auto-Attack</button></div></div>
 <div id="bottom"><button id="placementconfirm" style="display:none">Confirm placement</button><button id="placementcancel" style="display:none">Cancel</button><button id="attackorder">Attack order</button><button id="clearselect">Clear group</button><button id="zoomout">− Zoom</button><button id="cameramode" class="active">Move Camera</button><button id="selectmode">Select Mode</button><button id="rotate">Rotate</button><button id="zoomin">+ Zoom</button></div>
 <div id="minimap"><h3>Realm map</h3><canvas id="minimapCanvas" width="420" height="252" aria-label="Clickable minimap"></canvas><div class="muted">Click to move camera</div></div><div id="troopselection">No troops selected · Click your troops; Shift-click to add</div><div id="hint">Click troops to select · Shift-click to add · Right-click to move · Attack order then click ground</div><div id="toast"></div>
-<div id="join"><div class="joinbox panel"><h2 style="color:var(--gold);font-weight:normal">Enter the Realm</h2><p class="muted">Build your kingdom. Gather allies. Rule the coast.</p><input id="playername" maxlength="16" placeholder="Your lord's name" value="Lord"><input id="roomcode" maxlength="12" placeholder="Realm code" value="KINGDOM"><button id="joinbtn" style="width:100%;margin-top:8px">Join multiplayer realm</button><p class="muted">Share your realm code with friends to play together.</p></div></div>
+<div id="join"><div class="joinbox panel"><h2 style="color:var(--gold);font-weight:normal">Enter the Realm</h2><p class="muted">Create an account or log in to continue your kingdom.</p><input id="username" maxlength="16" autocomplete="username" placeholder="Username (3–16 letters, numbers, _)"><input id="password" type="password" maxlength="128" autocomplete="current-password" placeholder="Password (at least 8 characters)"><input id="playername" maxlength="16" placeholder="Lord name shown in game" value="Lord"><input id="roomcode" maxlength="12" placeholder="Realm code" value="KINGDOM"><div style="display:flex;gap:8px;margin-top:8px"><button id="registerbtn" style="flex:1">Create account</button><button id="loginbtn" style="flex:1">Log in</button></div><p class="muted">Your kingdom is linked to your account and realm code. Keep your password private.</p></div></div>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
@@ -207,30 +207,41 @@ for(const item of [...p.buildings,...p.units]){alive.add(item.id);const isBuildi
 function updateRecruitUI(){const el=document.querySelector('#selectedbuilding');const info=document.querySelector('#buildingInfo');const float=document.querySelector('#buildingFloat');const floatTitle=document.querySelector('#buildingFloatTitle');const panel=document.querySelector('#productionPanel');const title=document.querySelector('#productionTitle');const status=document.querySelector('#productionStatus');const facilityFor={soldier:'barracks',menatarms:'barracks',pikeman:'barracks',archer:'archery',crossbow:'archery',knight:'stable',lightcavalry:'stable',siege:'siegeworkshop',engineer:'siegeworkshop',ship:'dock'};const selectedKind=selectedProductionBuilding?.kind;const names={barracks:'Barracks',archery:'Archery Range',stable:'Stable',siegeworkshop:'Siege Workshop',dock:'Harbor'};const queue=selectedProductionBuilding?.productionQueue?.length||0;el.textContent=selectedProductionBuilding?names[selectedKind]+' selected · Queue: '+queue+' · 10 sec per unit':'Select a production building on the map.';if(info)info.textContent=selectedBuilding?(names[selectedBuilding.kind]||String(selectedBuilding.kind||'Building').replace(/\b\w/g,c=>c.toUpperCase()))+' · '+(selectedBuilding.underConstruction?'Under construction · '+Math.round((selectedBuilding.progress||0)*100)+'%':selectedBuilding.hp!==undefined?'Integrity: '+Math.ceil(selectedBuilding.hp)+' HP':'Your building'):'Select a building to view its details.';if(floatTitle)floatTitle.textContent=selectedBuilding?(names[selectedBuilding.kind]||String(selectedBuilding.kind||'Building').replace(/\b\w/g,c=>c.toUpperCase())):'Building';if(float)float.style.display=selectedBuilding?'block':'none';title.textContent=selectedProductionBuilding?names[selectedKind]+' Production':'Production';status.textContent=selectedProductionBuilding?'Choose a unit to add to this building’s queue. Queue: '+queue+' · Training time: 10 seconds':'Select a production building to see its available units.';panel.style.display=selectedProductionBuilding?'block':'none';document.querySelectorAll('#productionPanel [data-kind]').forEach(b=>{const required=facilityFor[b.dataset.kind];if(!required)return;b.style.display=selectedProductionBuilding&&selectedKind===required?'block':'none';b.disabled=!selectedProductionBuilding||selectedKind!==required;});}
 function notice(t){const el=document.querySelector('#toast');el.textContent=t;el.style.opacity=1;clearTimeout(notice.timer);notice.timer=setTimeout(()=>el.style.opacity=0,2300)}
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
-const joinButton=document.querySelector('#joinbtn');
-let joinTimer=null;
-function resetJoinButton(message){if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}joinButton.disabled=false;joinButton.textContent='Join multiplayer realm';if(message)notice(message);}
-function joinRealm(){
+const registerButton=document.querySelector('#registerbtn'),loginButton=document.querySelector('#loginbtn');
+let joinTimer=null,authMode=null;
+function resetJoinButton(message){if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}registerButton.disabled=false;loginButton.disabled=false;registerButton.textContent='Create account';loginButton.textContent='Log in';if(message)notice(message);}
+function joinRealm(mode){
  if(ws&&ws.readyState===WebSocket.CONNECTING)return;
  if(ws&&ws.readyState===WebSocket.OPEN)return;
+ const username=document.querySelector('#username').value.trim().toLowerCase();
+ const password=document.querySelector('#password').value;
  const name=document.querySelector('#playername').value.trim()||'Lord';
  const room=document.querySelector('#roomcode').value.trim()||'KINGDOM';
- joinButton.disabled=true;joinButton.textContent='Loading…';
+ if(!/^[a-z0-9_]{3,16}$/.test(username)){notice('Username must be 3–16 letters, numbers, or underscores.');return;}
+ if(password.length<8||password.length>128){notice('Password must be 8–128 characters.');return;}
+ authMode=mode;registerButton.disabled=true;loginButton.disabled=true;
+ if(mode==='register')registerButton.textContent='Creating…';else loginButton.textContent='Logging in…';
  try{ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);}
  catch(err){resetJoinButton('Could not start connection. Try again.');return;}
  joinTimer=setTimeout(()=>{if(!myId&&ws&&ws.readyState!==WebSocket.OPEN){try{ws.close();}catch{}resetJoinButton('Connection timed out. Check the game server and try again.');}},12000);
- ws.onopen=()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'join',name,room}));};
+ ws.onopen=()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'auth',mode,username,password}));};
  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return;}
-  if(m.type==='welcome'){if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}myId=m.id;myColor=m.color;document.querySelector('#realm').textContent='Realm: '+m.room+' · You: '+name;document.querySelector('#join').style.display='none';joinButton.disabled=false;joinButton.textContent='Join multiplayer realm';notice('Welcome to the realm!');}
+  if(m.type==='auth'){
+   if(!m.ok){resetJoinButton(m.error||'Account sign-in failed.');if(ws&&ws.readyState===WebSocket.OPEN)ws.close();return;}
+   if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}
+   if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'join',name,room}));
+  }
+  if(m.type==='welcome'){if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}myId=m.id;myColor=m.color;document.querySelector('#realm').textContent='Realm: '+m.room+' · You: '+(m.name||name);document.querySelector('#join').style.display='none';resetJoinButton();notice('Welcome back to the realm! Your saved kingdom has loaded.');}
   if(m.type==='state'){sync(m);renderChat(m.chat||[]);}
   if(m.type==='notice')notice(m.text);
  };
  ws.onerror=()=>{resetJoinButton('Connection error. Check that the game server is running, then try again.');};
- ws.onclose=()=>{if(!myId)resetJoinButton('Could not join. Check the server and try again.');else{if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}notice('Connection lost. Refresh to rejoin.');}};
+ ws.onclose=()=>{if(!myId){if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}resetJoinButton('Could not join. Check the server and try again.');}else{if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}notice('Connection lost. Refresh to log in again.');}};
 }
-joinButton.addEventListener('click',joinRealm);
-document.querySelector('#roomcode').addEventListener('keydown',e=>{if(e.key==='Enter')joinRealm()});
-document.querySelector('#playername').addEventListener('keydown',e=>{if(e.key==='Enter')joinRealm()});
+registerButton.addEventListener('click',()=>joinRealm('register'));
+loginButton.addEventListener('click',()=>joinRealm('login'));
+document.querySelector('#roomcode').addEventListener('keydown',e=>{if(e.key==='Enter')joinRealm('login')});
+document.querySelector('#password').addEventListener('keydown',e=>{if(e.key==='Enter')joinRealm('login')});
 const BUILD_KINDS=new Set(['house','farm','lumberyard','quarry','mine','market','barracks','archery','stable','siegeworkshop','tower','wall','dock']);let placingKind=null,placementPreview=null,placementPoint={x:0,z:0},placementEnd={x:0,z:0},wallStart=null,placementValid=false;
 function startPlacement(kind){
  if(!myId){notice('Join a realm first.');return}
