@@ -22,6 +22,10 @@
 .gui-minimized h3 .gui-minimize{margin-left:12px}
 @media(max-width:700px){#buildingFloat{top:auto;bottom:145px;left:12px;transform:none;width:min(300px,calc(100vw - 24px));max-height:42vh}}
 @media(max-width:700px), (pointer:coarse){
+/* RTS drag-selection marquee and movable panel handles */
+#selectionMarquee{position:fixed;display:none;z-index:20;pointer-events:none;border:1px solid #8fe2ff;background:#58bce52b;box-shadow:inset 0 0 0 1px #ffffff35}
+#chat>h3,#right>h3,#commander>h3,#minimap>h3,#buildingFloatHead{cursor:grab;user-select:none;touch-action:none}
+#chat>h3:active,#right>h3:active,#commander>h3:active,#minimap>h3:active,#buildingFloatHead:active{cursor:grabbing}
 /* Touch-first layout and safe-area support */
 html,body,#game{width:100%;height:100%;height:100dvh}
 #top{top:calc(5px + env(safe-area-inset-top));left:5px;right:5px;gap:5px;flex-wrap:wrap}
@@ -47,7 +51,7 @@ button,input{font-size:16px}
 }
 </style>
 </head>
-<body><div id="game"></div>
+<body><div id="game"></div><div id="selectionMarquee" aria-hidden="true"></div>
 <div id="top"><div id="brand">RED FEATHER RTS</div><div class="resources"><span class="resource">Gold: <b id="gold">300</b></span><span class="resource">Wood: <b id="wood">260</b></span><span class="resource">Food: <b id="food">220</b></span><span class="resource">Stone: <b id="stone">140</b></span></div></div>
 <div id="chat" class="panel"><h3>Realm chat</h3><div id="chatlog"></div><div id="chatrow"><input id="chatinput" maxlength="120" placeholder="Message..."><button id="sendchat">Send</button></div></div>
 <div id="right" class="panel"><h3>Kingdom</h3><div class="muted" id="realm">Connecting to realm…</div><div class="section"><h3>Build</h3><div class="muted">Your castle provides builders. Blueprints are completed after the builder reaches them (about 10 seconds).</div><div class="buildgrid"><button data-kind="house">House<br>90 wood</button><button data-kind="farm">Farm<br>65 wood</button><button data-kind="lumberyard">Lumber camp<br>80 wood</button><button data-kind="quarry">Quarry<br>80 wood · 25 stone</button><button data-kind="market">Market<br>100 wood · 40 stone</button><button data-kind="barracks">Barracks<br>120 wood · 35 stone</button><button data-kind="archery">Archery Range<br>100 wood · 25 stone</button><button data-kind="stable">Stable<br>150 wood · 60 stone</button><button data-kind="siegeworkshop">Siege Workshop<br>180 wood · 100 stone</button><button data-kind="tower">Watchtower<br>55 wood · 70 stone</button><button data-kind="wall">Stone wall<br>45 wood · 25 stone</button><button data-kind="dock">Harbor<br>150 wood · 40 stone</button></div></div><div class="section"><h3>Selected building</h3><div class="muted" id="selectedbuilding">Select a production building on the map to recruit its troop types.</div></div><div class="section" id="productionPanel" style="display:none"><h3 id="productionTitle">Production</h3><div class="muted" id="productionStatus">Choose what this building should make. Training takes 10 seconds per unit.</div><div class="buildgrid"><button data-kind="soldier">Soldier<br>45 gold · 35 food</button><button data-kind="menatarms">Men-at-Arms<br>85 gold · 45 food</button><button data-kind="archer">Archer<br>55 gold · 15 wood</button><button data-kind="crossbow">Crossbowman<br>75 gold · 25 wood</button><button data-kind="knight">Knight<br>110 gold · 55 food</button><button data-kind="lightcavalry">Light Cavalry<br>85 gold · 50 food</button><button data-kind="pikeman">Pikeman<br>65 gold · 40 food</button><button data-kind="siege">Siege Cart<br>160 gold · 90 wood</button><button data-kind="engineer">Engineer<br>95 gold · 35 wood</button><button data-kind="ship">Ship<br>130 gold · 120 wood</button></div><div class="muted" style="margin-top:6px">Combat: troops automatically attack nearby enemies and enemy buildings. Siege carts deal the most structure damage; engineers are also effective.</div></div><div class="section"><h3>Strategy</h3><div class="muted" id="score">Control score: 0</div><div class="muted">Hold the three marked landmarks to earn score and a small gold bonus.</div><div class="muted" style="margin-top:6px">Terrain: Forests, hills and mountains give defensive cover · Hills help ranged troops · Marsh slows cavalry · Roads speed movement.</div><div class="muted" style="margin-top:6px">Army supply: 8 units + 4 per house. Troops consume food over time.</div></div></div>
@@ -291,13 +295,54 @@ function renderChat(chat){const el=document.querySelector('#chatlog');el.innerHT
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function chat(){const input=document.querySelector('#chatinput');if(input.value.trim()){send({type:'chat',text:input.value});input.value=''}}document.querySelector('#sendchat').onclick=chat;document.querySelector('#chatinput').onkeydown=e=>{if(e.key==='Enter')chat()};
 function zoomBy(factor){const offset=camera.position.clone().sub(controls.target);const distance=THREE.MathUtils.clamp(offset.length()*factor,controls.minDistance,controls.maxDistance);offset.setLength(distance);camera.position.copy(controls.target).add(offset);controls.update();}document.querySelector('#zoomout').onclick=()=>zoomBy(1.12);document.querySelector('#zoomin').onclick=()=>zoomBy(.88);
-function setInteractionMode(mode){interactionMode=mode;controls.enabled=mode==='camera';controls.enableRotate=mode==='camera';controls.enablePan=mode==='camera';controls.mouseButtons.LEFT=THREE.MOUSE.PAN;controls.mouseButtons.MIDDLE=THREE.MOUSE.DOLLY;controls.mouseButtons.RIGHT=THREE.MOUSE.ROTATE;document.querySelector('#cameramode').classList.toggle('active',mode==='camera');document.querySelector('#selectmode').classList.toggle('active',mode==='select');moveMode=false;attackOrderMode=false;updateSelectionUI?.();notice(mode==='camera'?'Camera mode: drag to pan, right-drag to rotate.':'Select mode: camera is locked. Click your troops to select, then click the ground to move them.');}
+function setInteractionMode(mode){interactionMode=mode;controls.enabled=mode==='camera';controls.enableRotate=mode==='camera';controls.enablePan=mode==='camera';controls.mouseButtons.LEFT=THREE.MOUSE.PAN;controls.mouseButtons.MIDDLE=THREE.MOUSE.DOLLY;controls.mouseButtons.RIGHT=THREE.MOUSE.ROTATE;document.querySelector('#cameramode').classList.toggle('active',mode==='camera');document.querySelector('#selectmode').classList.toggle('active',mode==='select');moveMode=false;attackOrderMode=false;updateSelectionUI?.();notice(mode==='camera'?'Camera mode: drag to pan, right-drag to rotate.':'Select mode: drag a box around troops to mass-select; click the ground to move them.');}
 document.querySelector('#cameramode').onclick=()=>setInteractionMode('camera');document.querySelector('#selectmode').onclick=()=>setInteractionMode('select');
 document.querySelector('#rotate').onclick=()=>{rotateMode=!rotateMode;controls.enableRotate=rotateMode;notice(rotateMode?'Rotate mode enabled.':'Rotate mode disabled.')};
-const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
-function updateSelectionUI(){const el=document.querySelector('#troopselection');el.textContent=selectedUnits.length?selectedUnits.length+' troops selected · '+(interactionMode==='select'?'Click ground to move':'Switch to Select Mode to issue orders'):'No troops selected · Select Mode, then click troops';document.querySelector('#commandstatus').textContent=selectedUnits.length?selectedUnits.length+' under command · '+currentFormation+' · '+currentStance:'Select troops to issue orders';document.querySelectorAll('[data-formation]').forEach(b=>b.classList.toggle('active',b.dataset.formation===currentFormation));document.querySelectorAll('[data-stance]').forEach(b=>b.classList.toggle('active',b.dataset.stance===currentStance));document.querySelector('#attackorder').classList.toggle('active',attackOrderMode);document.querySelector('#movearmy').classList.toggle('active',moveMode);document.querySelector('#cameramode').classList.toggle('active',interactionMode==='camera');document.querySelector('#selectmode').classList.toggle('active',interactionMode==='select');document.querySelector('#autoattack').classList.toggle('active',currentStance==='aggressive');for(const [id,ring] of selectionRings){if(!selectedUnits.some(u=>u.id===id)){scene.remove(ring);selectionRings.delete(id);}}for(const u of selectedUnits){if(!selectionRings.has(u.id)){const ring=new THREE.Mesh(new THREE.RingGeometry(1.15,1.42,24),new THREE.MeshBasicMaterial({color:0xffdf83,side:THREE.DoubleSide,transparent:true,opacity:.9}));ring.rotation.x=-Math.PI/2;scene.add(ring);selectionRings.set(u.id,ring);}selectionRings.get(u.id).position.set(u.x,visuals.get(u.id)?.position.y+.35||terrainHeight(u.x,u.z)+.35,u.z);}}
+const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();
+const selectionMarquee=document.getElementById('selectionMarquee');
+let dragSelecting=false,selectionStart=null,selectionMoved=false,suppressSelectionClick=false;
+function selectableTroop(u){return u&&u.kind!=='builder'&&u.kind!=='ship'&&u.hp!==undefined;}
+function updateMarquee(a,b){
+ const left=Math.min(a.x,b.x),top=Math.min(a.y,b.y),width=Math.abs(a.x-b.x),height=Math.abs(a.y-b.y);
+ selectionMarquee.style.display='block';selectionMarquee.style.left=left+'px';selectionMarquee.style.top=top+'px';selectionMarquee.style.width=width+'px';selectionMarquee.style.height=height+'px';
+}
+renderer.domElement.addEventListener('pointerdown',e=>{
+ if(interactionMode!=='select'||placingKind||e.button!==0)return;
+ dragSelecting=true;selectionMoved=false;selectionStart={x:e.clientX,y:e.clientY};
+});
+renderer.domElement.addEventListener('pointermove',e=>{
+ if(!dragSelecting||!selectionStart)return;
+ if(Math.hypot(e.clientX-selectionStart.x,e.clientY-selectionStart.y)>5)selectionMoved=true;
+ if(selectionMoved)updateMarquee(selectionStart,{x:e.clientX,y:e.clientY});
+});
+renderer.domElement.addEventListener('pointerup',e=>{
+ if(!dragSelecting||!selectionStart)return;
+ dragSelecting=false;
+ if(!selectionMoved){selectionMarquee.style.display='none';selectionStart=null;return;}
+ const end={x:e.clientX,y:e.clientY},left=Math.min(selectionStart.x,end.x),right=Math.max(selectionStart.x,end.x),top=Math.min(selectionStart.y,end.y),bottom=Math.max(selectionStart.y,end.y);
+ selectionMarquee.style.display='none';suppressSelectionClick=true;
+ const ownUnits=gameState?.players?.[myId]?.units||[];
+ const picked=[];
+ for(const unit of ownUnits){
+  if(!selectableTroop(unit))continue;
+  const visual=visuals.get(unit.id);if(!visual)continue;
+  const p=visual.position.clone();p.y+=1.2;p.project(camera);
+  if(p.z< -1||p.z>1)continue;
+  const sx=(p.x*.5+.5)*innerWidth,sy=(-p.y*.5+.5)*innerHeight;
+  if(sx>=left&&sx<=right&&sy>=top&&sy<=bottom)picked.push(unit);
+ }
+ if(!e.shiftKey)selectedUnits=[];
+ for(const unit of picked)if(!selectedUnits.some(existing=>existing.id===unit.id))selectedUnits.push(unit);
+ if(picked.length){currentStance=picked[0].stance||currentStance;attackOrderMode=false;moveMode=false;}
+ updateSelectionUI();notice(picked.length?picked.length+' troops selected.':'No troops inside selection box.');
+ selectionStart=null;selectionMoved=false;
+});
+renderer.domElement.addEventListener('pointercancel',()=>{dragSelecting=false;selectionStart=null;selectionMoved=false;selectionMarquee.style.display='none';});
+renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
+function updateSelectionUI(){const el=document.querySelector('#troopselection');el.textContent=selectedUnits.length?selectedUnits.length+' troops selected · '+(interactionMode==='select'?'Drag to mass-select · click ground to move':'Switch to Select Mode to select'):'No troops selected · Select Mode, then drag a box around troops';document.querySelector('#commandstatus').textContent=selectedUnits.length?selectedUnits.length+' under command · '+currentFormation+' · '+currentStance:'Select troops to issue orders';document.querySelectorAll('[data-formation]').forEach(b=>b.classList.toggle('active',b.dataset.formation===currentFormation));document.querySelectorAll('[data-stance]').forEach(b=>b.classList.toggle('active',b.dataset.stance===currentStance));document.querySelector('#attackorder').classList.toggle('active',attackOrderMode);document.querySelector('#movearmy').classList.toggle('active',moveMode);document.querySelector('#cameramode').classList.toggle('active',interactionMode==='camera');document.querySelector('#selectmode').classList.toggle('active',interactionMode==='select');document.querySelector('#autoattack').classList.toggle('active',currentStance==='aggressive');for(const [id,ring] of selectionRings){if(!selectedUnits.some(u=>u.id===id)){scene.remove(ring);selectionRings.delete(id);}}for(const u of selectedUnits){if(!selectionRings.has(u.id)){const ring=new THREE.Mesh(new THREE.RingGeometry(1.15,1.42,24),new THREE.MeshBasicMaterial({color:0xffdf83,side:THREE.DoubleSide,transparent:true,opacity:.9}));ring.rotation.x=-Math.PI/2;scene.add(ring);selectionRings.set(u.id,ring);}selectionRings.get(u.id).position.set(u.x,visuals.get(u.id)?.position.y+.35||terrainHeight(u.x,u.z)+.35,u.z);}}
 function pickItem(e){mouse.x=e.clientX/innerWidth*2-1;mouse.y=-(e.clientY/innerHeight)*2+1;ray.setFromCamera(mouse,camera);const hits=ray.intersectObjects([...visuals.values()],true);let obj=hits[0]?.object;while(obj&&!obj.userData.item)obj=obj.parent;return obj;}
 renderer.domElement.addEventListener('click',e=>{
+ if(suppressSelectionClick){suppressSelectionClick=false;return;}
  if(placingKind||interactionMode!=='select')return;
  const obj=pickItem(e);
  if(obj?.userData.item&&obj.userData.owner===myId){
@@ -337,7 +382,7 @@ function setupGuiPanels(){
   const panel=document.getElementById(id),heading=panel?.querySelector('h3');if(!panel||!heading)continue;
   const btn=document.createElement('button');btn.type='button';btn.className='gui-minimize';btn.textContent='−';btn.title='Minimize / restore panel';
   btn.addEventListener('click',()=>{const minimized=panel.classList.toggle('gui-minimized');btn.textContent=minimized?'+':'−';btn.title=minimized?'Restore panel':'Minimize panel';});
-  heading.appendChild(btn);
+  heading.appendChild(btn);heading.title='Drag this heading to move the panel';
   let dragging=false,dx=0,dy=0;
   heading.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;dragging=true;const r=panel.getBoundingClientRect();dx=e.clientX-r.left;dy=e.clientY-r.top;heading.setPointerCapture(e.pointerId);});
   heading.addEventListener('pointermove',e=>{if(!dragging)return;panel.style.left=Math.max(4,Math.min(innerWidth-panel.offsetWidth-4,e.clientX-dx))+'px';panel.style.top=Math.max(4,Math.min(innerHeight-panel.offsetHeight-4,e.clientY-dy))+'px';panel.style.right='auto';panel.style.bottom='auto';});
@@ -349,7 +394,7 @@ function setupGuiPanels(){
  
  document.getElementById('buildingProduction').appendChild(document.getElementById('productionPanel'));
  let dragging=false,offsetX=0,offsetY=0;
- head.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;dragging=true;const rect=float.getBoundingClientRect();offsetX=e.clientX-rect.left;offsetY=e.clientY-rect.top;head.setPointerCapture(e.pointerId);});
+ head.title='Drag this title bar to move the building panel';head.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;dragging=true;const rect=float.getBoundingClientRect();offsetX=e.clientX-rect.left;offsetY=e.clientY-rect.top;head.setPointerCapture(e.pointerId);});
  head.addEventListener('pointermove',e=>{if(!dragging)return;float.style.left=Math.max(6,Math.min(innerWidth-float.offsetWidth-6,e.clientX-offsetX))+'px';float.style.top=Math.max(6,Math.min(innerHeight-float.offsetHeight-6,e.clientY-offsetY))+'px';float.style.transform='none';});
  head.addEventListener('pointerup',()=>{dragging=false;});head.addEventListener('pointercancel',()=>{dragging=false;});
 }
