@@ -30,6 +30,7 @@ function saveStore() {
       store.rooms[code] = {
         state: room.state,
         playerAccounts: Object.fromEntries(room.playerAccounts),
+        parkedPlayers: room.parkedPlayers,
         nextId
       };
     }
@@ -101,10 +102,19 @@ function roomFor(code) {
   if (!rooms.has(code)) {
     const saved = store.rooms[code];
     if (saved && Number.isFinite(saved.nextId)) nextId = Math.max(nextId, saved.nextId);
+    const restoredState = saved?.state && typeof saved.state === "object" ? saved.state : { players: {}, chat: [] };
+    const parkedPlayers = saved?.parkedPlayers && typeof saved.parkedPlayers === "object" ? saved.parkedPlayers : {};
+    // Every player in a disk save is offline after a server restart. Keep their
+    // kingdoms in private storage rather than exposing them to the live map.
+    for (const [id, player] of Object.entries(restoredState.players || {})) {
+      if (player && !parkedPlayers[id]) parkedPlayers[id] = player;
+    }
+    restoredState.players = {};
     rooms.set(code, {
       players: new Map(),
       playerAccounts: new Map(Object.entries(saved?.playerAccounts || {})),
-      state: saved?.state && typeof saved.state === "object" ? saved.state : { players: {}, chat: [] }
+      parkedPlayers,
+      state: restoredState
     });
   }
   return rooms.get(code);
@@ -216,6 +226,10 @@ wss.on("connection",ws=>{
     room.state.players[playerId]={id:playerId,name,color,gold:300,wood:260,food:220,stone:140,score:0,buildings:[castle],units:[builder],x:spawnX,z:spawnZ,defeated:false};
     room.playerAccounts.set(playerId,ws.authUser);
    }
+   if (!room.state.players[playerId] && room.parkedPlayers[playerId]) {
+    room.state.players[playerId] = room.parkedPlayers[playerId];
+    delete room.parkedPlayers[playerId];
+   }
    const savedPlayer=room.state.players[playerId];
    if(!savedPlayer){notice(ws,"Saved kingdom data is missing. Please contact the game owner.");ws.close();return;}
    savedPlayer.name=name || savedPlayer.name;
@@ -303,7 +317,14 @@ wss.on("connection",ws=>{
  });
  ws.on("close",()=>{
   if(room&&playerId){const p=room.players.get(playerId);room.players.delete(playerId);
-   if(p){broadcast(room,snapshot(room));broadcast(room,{type:"notice",text:p.name+" left the realm."});}
+   const savedPlayer=room.state.players[playerId];
+   if(savedPlayer){
+    // Park the complete kingdom off the active map. Its buildings cannot block
+    // placements or be attacked while its owner is away.
+    room.parkedPlayers[playerId]=savedPlayer;
+    delete room.state.players[playerId];
+   }
+   if(p){broadcast(room,snapshot(room));broadcast(room,{type:"notice",text:p.name+" left the realm. Their kingdom has been safely stored."});}
    saveStore();
   }
  });
