@@ -208,7 +208,7 @@ function updateRecruitUI(){const el=document.querySelector('#selectedbuilding');
 function notice(t){const el=document.querySelector('#toast');el.textContent=t;el.style.opacity=1;clearTimeout(notice.timer);notice.timer=setTimeout(()=>el.style.opacity=0,2300)}
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
 const registerButton=document.querySelector('#registerbtn'),loginButton=document.querySelector('#loginbtn');
-let joinTimer=null,authMode=null;
+let joinTimer=null,authMode=null,authFailed=false;
 function resetJoinButton(message){if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}registerButton.disabled=false;loginButton.disabled=false;registerButton.textContent='Create account';loginButton.textContent='Log in';if(message)notice(message);}
 function joinRealm(mode){
  if(ws&&ws.readyState===WebSocket.CONNECTING)return;
@@ -219,7 +219,7 @@ function joinRealm(mode){
  const room=document.querySelector('#roomcode').value.trim()||'KINGDOM';
  if(!/^[a-z0-9_]{3,16}$/.test(username)){notice('Username must be 3–16 letters, numbers, or underscores.');return;}
  if(password.length<8||password.length>128){notice('Password must be 8–128 characters.');return;}
- authMode=mode;registerButton.disabled=true;loginButton.disabled=true;
+ authMode=mode;authFailed=false;registerButton.disabled=true;loginButton.disabled=true;
  if(mode==='register')registerButton.textContent='Creating…';else loginButton.textContent='Logging in…';
  try{ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);}
  catch(err){resetJoinButton('Could not start connection. Try again.');return;}
@@ -227,7 +227,7 @@ function joinRealm(mode){
  ws.onopen=()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'auth',mode,username,password}));};
  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return;}
   if(m.type==='auth'){
-   if(!m.ok){resetJoinButton(m.error||'Account sign-in failed.');if(ws&&ws.readyState===WebSocket.OPEN)ws.close();return;}
+   if(!m.ok){authFailed=true;resetJoinButton(m.error||'Account sign-in failed.');if(ws&&ws.readyState===WebSocket.OPEN)ws.close();return;}
    if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}
    if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'join',name,room}));
   }
@@ -236,7 +236,7 @@ function joinRealm(mode){
   if(m.type==='notice')notice(m.text);
  };
  ws.onerror=()=>{resetJoinButton('Connection error. Check that the game server is running, then try again.');};
- ws.onclose=()=>{if(!myId){if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}resetJoinButton('Could not join. Check the server and try again.');}else{if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}notice('Connection lost. Refresh to log in again.');}};
+ ws.onclose=()=>{if(!myId){if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}if(!authFailed)resetJoinButton('Could not join. Check the server and try again.');else resetJoinButton();}else{if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}notice('Connection lost. Refresh to log in again.');}};
 }
 registerButton.addEventListener('click',()=>joinRealm('register'));
 loginButton.addEventListener('click',()=>joinRealm('login'));
