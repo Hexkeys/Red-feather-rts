@@ -217,7 +217,8 @@ setInterval(()=>{
    if(p.defeated)continue;
    const farms=p.buildings.filter(b=>b.kind==="farm").length;
    const lumberyards=p.buildings.filter(b=>b.kind==="lumberyard").length;
-   const quarries=p.buildings.filter(b=>b.kind==="quarry").length;\n   const mines=p.buildings.filter(b=>b.kind==="mine").length;
+   const quarries=p.buildings.filter(b=>b.kind==="quarry").length;
+   const mines=p.buildings.filter(b=>b.kind==="mine").length;
    const markets=p.buildings.filter(b=>b.kind==="market").length;
    // No free passive income: production comes from the matching economy buildings.
    p.food+=farms*.55;p.wood+=lumberyards*.45;p.stone+=quarries*.3+mines*.75;p.gold+=markets*.3;
