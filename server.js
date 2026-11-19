@@ -23,7 +23,7 @@ const UNIT_STATS = {builder:{hp:90,damage:0,range:0,speed:3.1},
   pikeman:{hp:125,damage:17,range:2.3,speed:3.0},
   siege:{hp:220,damage:38,range:10,speed:1.5}, engineer:{hp:90,damage:7,range:1.8,speed:2.7}, ship:{hp:260,damage:25,range:9,speed:2.4}
 };
-const BUILDING_STATS = {castle:{hp:2400},house:{hp:260},farm:{hp:180},lumberyard:{hp:220},quarry:{hp:260},mine:{hp:360},market:{hp:300},barracks:{hp:500},archery:{hp:420},stable:{hp:480},siegeworkshop:{hp:520},tower:{hp:420,damage:18,range:11},wall:{hp:650},dock:{hp:450}};
+const BUILDING_STATS = {castle:{hp:2400},house:{hp:260},farm:{hp:180},lumberyard:{hp:220},quarry:{hp:260},mine:{hp:360},market:{hp:300},barracks:{hp:500},archery:{hp:420},stable:{hp:480},siegeworkshop:{hp:520},tower:{hp:420,damage:18,range:11},wall:{hp:1600},dock:{hp:450}};
 const BUILDINGS = new Set(Object.keys(BUILDING_STATS));
 const UNITS = new Set(Object.keys(UNIT_STATS));
 
