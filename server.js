@@ -82,14 +82,17 @@ loadStore();
 
 // One-time full game reset requested by the owner on 2026-11-19.
 // Accounts are global, so this clears every saved account and realm once.
+// Write the empty save directly here: the room manager is initialized below,
+// so saveStore() must not be called until after that initialization.
 const RESET_MARKER = path.join(DATA_DIR, "red-feather-full-reset-2026-11-19.done");
 if (!fs.existsSync(RESET_MARKER)) {
   try {
-    if (fs.existsSync(SAVE_FILE)) fs.unlinkSync(SAVE_FILE);
     store = { accounts: {}, rooms: {} };
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(RESET_MARKER, "Completed full realm reset.\n", { flag: "wx", mode: 0o600 });
-    if (!saveStore()) throw new Error("Could not write the empty game save after reset.");
+    const resetTemp = SAVE_FILE + ".reset.tmp";
+    fs.writeFileSync(resetTemp, JSON.stringify(store), { mode: 0o600 });
+    fs.renameSync(resetTemp, SAVE_FILE);
+    fs.writeFileSync(RESET_MARKER, "Completed full realm reset.\\n", { flag: "wx", mode: 0o600 });
     console.log("Completed one-time full realm reset: all accounts and realm progress cleared.");
   } catch (error) {
     console.error("Full realm reset failed; server startup is being stopped to avoid an incomplete reset:", error.message);
