@@ -12,7 +12,7 @@ const rooms = new Map();
 let nextId = 1;
 
 const COSTS = {
-  house:{wood:90}, farm:{wood:65}, lumberyard:{wood:80}, quarry:{wood:80,stone:25}, market:{wood:100,stone:40}, barracks:{wood:120,stone:35}, archery:{wood:100,stone:25}, stable:{wood:150,stone:60}, siegeworkshop:{wood:180,stone:100}, tower:{wood:55,stone:70}, wall:{wood:45,stone:25}, dock:{wood:150,stone:40},
+  house:{wood:90}, farm:{wood:65}, lumberyard:{wood:80}, quarry:{wood:80,stone:25}, mine:{wood:110,stone:25}, market:{wood:100,stone:40}, barracks:{wood:120,stone:35}, archery:{wood:100,stone:25}, stable:{wood:150,stone:60}, siegeworkshop:{wood:180,stone:100}, tower:{wood:55,stone:70}, wall:{wood:100,stone:75}, dock:{wood:150,stone:40},
   soldier:{gold:45,food:35}, menatarms:{gold:85,food:45}, archer:{gold:55,wood:15,food:30}, crossbow:{gold:75,wood:25,food:35}, knight:{gold:110,food:55}, lightcavalry:{gold:85,food:50},
   pikeman:{gold:65,wood:10,food:40}, siege:{gold:160,wood:90}, engineer:{gold:95,wood:35,food:30}, ship:{gold:130,wood:120,food:25}
 };
@@ -23,7 +23,7 @@ const UNIT_STATS = {builder:{hp:90,damage:0,range:0,speed:3.1},
   pikeman:{hp:125,damage:17,range:2.3,speed:3.0},
   siege:{hp:220,damage:38,range:10,speed:1.5}, engineer:{hp:90,damage:7,range:1.8,speed:2.7}, ship:{hp:260,damage:25,range:9,speed:2.4}
 };
-const BUILDING_STATS = {castle:{hp:2400},house:{hp:260},farm:{hp:180},lumberyard:{hp:220},quarry:{hp:260},market:{hp:300},barracks:{hp:500},archery:{hp:420},stable:{hp:480},siegeworkshop:{hp:520},tower:{hp:420,damage:18,range:11},wall:{hp:650},dock:{hp:450}};
+const BUILDING_STATS = {castle:{hp:2400},house:{hp:260},farm:{hp:180},lumberyard:{hp:220},quarry:{hp:260},mine:{hp:360},market:{hp:300},barracks:{hp:500},archery:{hp:420},stable:{hp:480},siegeworkshop:{hp:520},tower:{hp:420,damage:18,range:11},wall:{hp:650},dock:{hp:450}};
 const BUILDINGS = new Set(Object.keys(BUILDING_STATS));
 const UNITS = new Set(Object.keys(UNIT_STATS));
 
@@ -146,7 +146,7 @@ wss.on("connection",ws=>{
      if(!Number.isFinite(x2)||!Number.isFinite(z2)){notice(ws,"Choose both ends of the wall.");return;}
      item.x2=clamp(x2,-2370,2370);item.z2=clamp(z2,-1770,1770);
      const length=distance(item,{x:item.x2,z:item.z2});
-     if(length<3||length>32){notice(ws,"Wall length must be between 3 and 32 metres.");return;}
+     if(length<6||length>90){notice(ws,"City wall sections must be between 6 and 90 metres.");return;}
      const midpoint={x:(item.x+item.x2)/2,z:(item.z+item.z2)/2};
      const nearCastle=allItems(room).some(other=>other.kind==="castle"&&other.owner!==playerId&&distance(midpoint,other)<175);
      if(nearCastle){notice(ws,"That wall is too close to an enemy castle.");return;}
@@ -217,10 +217,10 @@ setInterval(()=>{
    if(p.defeated)continue;
    const farms=p.buildings.filter(b=>b.kind==="farm").length;
    const lumberyards=p.buildings.filter(b=>b.kind==="lumberyard").length;
-   const quarries=p.buildings.filter(b=>b.kind==="quarry").length;
+   const quarries=p.buildings.filter(b=>b.kind==="quarry").length;\n   const mines=p.buildings.filter(b=>b.kind==="mine").length;
    const markets=p.buildings.filter(b=>b.kind==="market").length;
    // No free passive income: production comes from the matching economy buildings.
-   p.food+=farms*.55;p.wood+=lumberyards*.45;p.stone+=quarries*.3;p.gold+=markets*.3;
+   p.food+=farms*.55;p.wood+=lumberyards*.45;p.stone+=quarries*.3+mines*.75;p.gold+=markets*.3;
    if(p.units.length)p.food=Math.max(0,p.food-p.units.length*.018);
   }
   for(const p of players)if(!p.defeated){for(const blueprint of p.buildings.filter(b=>b.underConstruction)){let worker=p.units.find(u=>u.kind==="builder"&&u.id===blueprint.builderId);if(!worker){worker=p.units.find(u=>u.kind==="builder"&&!u.assignedBuildingId);if(!worker){const castle=p.buildings.find(b=>b.kind==="castle");if(castle){worker={id:"i"+nextId++,kind:"builder",x:castle.x+9,z:castle.z+8,owner:p.id,...UNIT_STATS.builder,maxHp:UNIT_STATS.builder.hp,tx:castle.x+9,tz:castle.z+8};p.units.push(worker);}}if(worker){worker.assignedBuildingId=blueprint.id;blueprint.builderId=worker.id;worker.tx=blueprint.x;worker.tz=blueprint.z;}}}}
