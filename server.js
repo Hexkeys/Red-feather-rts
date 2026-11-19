@@ -127,6 +127,29 @@ function broadcast(room,data){for(const p of room.players.values())send(p.ws,dat
 function snapshot(room){return{type:"state",players:room.state.players,chat:room.state.chat.slice(-30)};}
 function notice(ws,text){send(ws,{type:"notice",text});}
 function distance(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
+function repositionParkedTroops(player){
+ const castle=player.buildings.find(b=>b.kind==="castle");
+ if(!castle)return;
+ const placed=[];
+ for(const unit of player.units){
+  // Ships stay at their saved harbor/water positions; land troops regroup around the castle.
+  if(unit.kind==="ship")continue;
+  let destination=null;
+  for(let radius=34;radius<=130&&!destination;radius+=12){
+   for(let i=0;i<32;i++){
+    const angle=(i/32)*Math.PI*2+(placed.length%2)*.08;
+    const candidate={x:clamp(castle.x+Math.cos(angle)*radius,-2370,2370),z:clamp(castle.z+Math.sin(angle)*radius,-1770,1770)};
+    if(["sea","river"].includes(terrainAt(candidate.x,candidate.z)))continue;
+    if(player.buildings.some(b=>distance(candidate,b)<(b.kind==="castle"?30:b.kind==="wall"?10:14)))continue;
+    if(placed.some(p=>distance(candidate,p)<9))continue;
+    destination=candidate;break;
+   }
+  }
+  if(!destination)destination={x:castle.x+36+(placed.length%6)*9,z:castle.z+36+Math.floor(placed.length/6)*9};
+  unit.x=destination.x;unit.z=destination.z;unit.tx=destination.x;unit.tz=destination.z;
+  unit.orderMode="move";delete unit.path;placed.push(destination);
+ }
+}
 function clamp(n,min,max){return Math.max(min,Math.min(max,n));}
 // Deterministic terrain aligned with the client-side continental map.
 function riverCenter(z){return Math.sin(z*.00105)*368+Math.sin(z*.00275)*96-140+Math.sin(z*.00048)*110;}
@@ -249,6 +272,7 @@ wss.on("connection",ws=>{
    if (!room.state.players[playerId] && room.parkedPlayers[playerId]) {
     room.state.players[playerId] = room.parkedPlayers[playerId];
     delete room.parkedPlayers[playerId];
+    repositionParkedTroops(room.state.players[playerId]);
    }
    const savedPlayer=room.state.players[playerId];
    if(!savedPlayer){notice(ws,"Saved kingdom data is missing. Please contact the game owner.");ws.close();return;}
@@ -262,6 +286,19 @@ wss.on("connection",ws=>{
   if(!room||!playerId)return;
   const me=room.state.players[playerId];if(!me)return;
   if(me.defeated){notice(ws,"Your castle has fallen. You have been defeated.");return;}
+  if(msg.type==="remove-building"){
+   const buildingId=String(msg.buildingId||"");
+   const index=me.buildings.findIndex(b=>b.id===buildingId);
+   if(index<0){notice(ws,"That building is not in your kingdom.");return;}
+   const building=me.buildings[index];
+   if(building.kind==="castle"){notice(ws,"Your castle is the heart of your kingdom and cannot be demolished.");return;}
+   me.buildings.splice(index,1);
+   if(selectedBuilding?.id===buildingId)selectedBuilding=null;
+   broadcast(room,snapshot(room));
+   notice(ws,building.kind+" demolished. Resources are not refunded.");
+   saveStore();
+   return;
+  }
   if(msg.type==="action"){
    const kind=String(msg.kind||""),cost=COSTS[kind];if(!cost)return;
    const supply=8+me.buildings.filter(b=>b.kind==="house").length*4;
