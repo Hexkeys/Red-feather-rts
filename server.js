@@ -6,6 +6,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+if (process.env.RENDER && !process.env.DATA_DIR) console.warn("Render detected: set DATA_DIR=/var/data and attach a persistent disk at /var/data to keep saves across restarts.");
 const SAVE_FILE = path.join(DATA_DIR, "red-feather-save.json");
 let store = { accounts: {}, rooms: {} };
 function loadStore() {
