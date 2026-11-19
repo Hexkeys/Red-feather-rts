@@ -152,6 +152,16 @@ function broadcast(room,data){for(const p of room.players.values())send(p.ws,dat
 function snapshot(room){return{type:"state",players:room.state.players,chat:room.state.chat.slice(-30)};}
 function notice(ws,text){send(ws,{type:"notice",text});}
 function distance(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
+function distanceToWall(point,wall){
+ const ax=wall.x,az=wall.z,bx=Number.isFinite(wall.x2)?wall.x2:wall.x,bz=Number.isFinite(wall.z2)?wall.z2:wall.z;
+ const dx=bx-ax,dz=bz-az,len2=dx*dx+dz*dz;
+ const t=len2?Math.max(0,Math.min(1,((point.x-ax)*dx+(point.z-az)*dz)/len2)):0;
+ return Math.hypot(point.x-(ax+t*dx),point.z-(az+t*dz));
+}
+function blockedByEnemyWall(unit,x,z,items){
+ const candidate={x,z};
+ return items.some(item=>item.category==="building"&&item.kind==="wall"&&item.owner!==unit.owner&&item.hp>0&&distanceToWall(candidate,item)<1.9);
+}
 function repositionParkedTroops(player){
  const castle=player.buildings.find(b=>b.kind==="castle");
  if(!castle)return;
@@ -440,7 +450,7 @@ setInterval(()=>{
      if(dist<pursuitDistance){pursuitDistance=dist;pursuitTarget=enemy;}
     }
     if(!target&&u.orderMode==="attack"){
-     for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||enemy.category!=="building")continue;const dist=distance(u,enemy);if(dist<=u.range&&dist<best){best=dist;target=enemy;}}
+     for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||enemy.category!=="building")continue;const dist=enemy.kind==="wall"?distanceToWall(u,enemy):distance(u,enemy);const attackReach=u.range+(enemy.kind==="wall"?1.9:0);if(dist<=attackReach&&dist<best){best=dist;target=enemy;}}
     }
    }
    const stance=u.stance==="hold"?"hold":"guard";
@@ -454,7 +464,7 @@ setInterval(()=>{
    if(d>.15&&(manualMoving||approaching||(!target&&!pursuitTarget&&stance!=="hold"))){
     const step=Math.min(d,u.speed*terrainSpeed(u)*dt);
     if(u.kind==="ship"&&d<=step+.01){u.x=moveTarget.x;u.z=moveTarget.z;if(u.path?.length)u.path.shift();}
-    else{const nx=u.x+dx/d*step,nz=u.z+dz/d*step;if(u.kind!=="ship"||terrainAt(nx,nz)==="sea"){u.x=nx;u.z=nz;}}
+    else{const nx=u.x+dx/d*step,nz=u.z+dz/d*step;if((u.kind!=="ship"||terrainAt(nx,nz)==="sea")&&!blockedByEnemyWall(u,nx,nz,items)){u.x=nx;u.z=nz;}}
    }
    if(u.kind==="builder"&&u.assignedBuildingId&&d<5){const blueprint=p.buildings.find(b=>b.id===u.assignedBuildingId);if(blueprint&&blueprint.underConstruction){blueprint.progress=Math.min(1,(blueprint.progress||0)+dt/10);blueprint.hp=blueprint.maxHp*(.12+.88*blueprint.progress);if(blueprint.progress>=1){blueprint.underConstruction=false;delete blueprint.builderId;delete u.assignedBuildingId;u.tx=u.x;u.tz=u.z;u.orderMode="move";}}}
    if(target&&u.kind!=="builder"&&u.damage>0){
