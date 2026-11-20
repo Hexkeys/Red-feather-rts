@@ -398,7 +398,7 @@ wss.on("connection",ws=>{
    broadcast(room,snapshot(room));return;
   }
   if(msg.type==="command"){
-   if(!Array.isArray(msg.ids))return;const stance=["guard","hold"].includes(msg.stance)?msg.stance:null;if(!stance)return;
+   if(!Array.isArray(msg.ids))return;const stance=msg.stance==="hold"?"hold":null;if(!stance)return;
    const ids=[...new Set(msg.ids.map(String))].slice(0,80);for(const id of ids){const unit=me.units.find(u=>u.id===id);if(unit){unit.stance=stance;if(stance==="hold"){unit.tx=unit.x;unit.tz=unit.z;unit.orderMode="move";}}}
    broadcast(room,snapshot(room));return;
   }
@@ -455,15 +455,15 @@ setInterval(()=>{
      for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||enemy.category!=="building")continue;const dist=enemy.kind==="wall"?distanceToWall(u,enemy):distance(u,enemy);const attackReach=u.range+(enemy.kind==="wall"?1.9:0);if(dist<=attackReach&&dist<best){best=dist;target=enemy;}}
     }
    }
-   const stance=u.stance==="hold"?"hold":"guard";
+   u.stance="hold";const stance="hold";
    const manualDistance=distance(u,{x:Number.isFinite(u.tx)?u.tx:u.x,z:Number.isFinite(u.tz)?u.tz:u.z});
    const hasManualMove=manualDistance>1.2;
    let moveTarget=u.kind==="ship"&&u.path?.length?u.path[0]:{x:u.tx,z:u.tz};
-   if(stance!=="hold"&&!hasManualMove&&!target&&u.attackZone){const zoneUnits=items.filter(enemy=>enemy.owner!==p.id&&enemy.hp>0&&enemy.category==="unit"&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)<=u.attackZone.radius);const zoneTargets=zoneUnits.length?zoneUnits:items.filter(enemy=>enemy.owner!==p.id&&enemy.hp>0&&enemy.category==="building"&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)<=u.attackZone.radius);zoneTargets.sort((a,b)=>distance(u,a)-distance(u,b));if(zoneTargets.length)moveTarget={x:zoneTargets[0].x,z:zoneTargets[0].z};else moveTarget={x:u.x,z:u.z};}
-   else if(stance!=="hold"&&!hasManualMove&&!target&&pursuitTarget&&pursuitDistance<=(u.engageRange||34))moveTarget={x:pursuitTarget.x,z:pursuitTarget.z};
+   if(!hasManualMove&&!target&&u.attackZone){const zoneUnits=items.filter(enemy=>enemy.owner!==p.id&&enemy.hp>0&&enemy.category==="unit"&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)<=u.attackZone.radius);const zoneTargets=zoneUnits.length?zoneUnits:items.filter(enemy=>enemy.owner!==p.id&&enemy.hp>0&&enemy.category==="building"&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)<=u.attackZone.radius);zoneTargets.sort((a,b)=>distance(u,a)-distance(u,b));if(zoneTargets.length)moveTarget={x:zoneTargets[0].x,z:zoneTargets[0].z};else moveTarget={x:u.x,z:u.z};}
+   
    const dx=moveTarget.x-u.x,dz=moveTarget.z-u.z,d=Math.hypot(dx,dz);
    const manualMoving=stance!=="hold"&&hasManualMove;
-   const approaching=stance!=="hold"&&!hasManualMove&&!target&&((u.attackZone&&Math.hypot(moveTarget.x-u.x,moveTarget.z-u.z)>.15)||(pursuitTarget&&pursuitDistance<=(u.engageRange||34)&&pursuitDistance>u.range*.9));
+   const approaching=!hasManualMove&&!target&&u.attackZone&&Math.hypot(moveTarget.x-u.x,moveTarget.z-u.z)>.15;
    if(d>.15&&(manualMoving||approaching||(!target&&!pursuitTarget&&stance!=="hold"))){
     const step=Math.min(d,u.speed*terrainSpeed(u)*dt);
     if(u.kind==="ship"&&d<=step+.01){u.x=moveTarget.x;u.z=moveTarget.z;if(u.path?.length)u.path.shift();}
@@ -478,7 +478,7 @@ setInterval(()=>{
     }
    }else if(!target)u.attackCooldown=Math.max(0,(u.attackCooldown||0)-dt);
   }
-  for(const p of players)if(!p.defeated)for(const facility of p.buildings){if(!facility.productionQueue?.length)continue;const job=facility.productionQueue[0];job.remaining-=dt;if(job.remaining<=0){const kind=job.kind,stats=UNIT_STATS[kind];if(stats){let sx=facility.x+7,sz=facility.z+5;if(kind==="ship"){const water=findNearbySea(facility.x,facility.z,300);if(!water){facility.productionQueue.shift();notice(room.players.get(p.id)?.ws,"This harbor has no nearby water. Build it closer to the coast.");continue;}sx=water.x;sz=water.z;}const unit={id:"i"+nextId++,kind,x:sx,z:sz,owner:p.id,...stats,maxHp:stats.hp,tx:sx,tz:sz,attackCooldown:0,attackPulse:0,stance:"guard"};p.units.push(unit);}facility.productionQueue.shift();}}
+  for(const p of players)if(!p.defeated)for(const facility of p.buildings){if(!facility.productionQueue?.length)continue;const job=facility.productionQueue[0];job.remaining-=dt;if(job.remaining<=0){const kind=job.kind,stats=UNIT_STATS[kind];if(stats){let sx=facility.x+7,sz=facility.z+5;if(kind==="ship"){const water=findNearbySea(facility.x,facility.z,300);if(!water){facility.productionQueue.shift();notice(room.players.get(p.id)?.ws,"This harbor has no nearby water. Build it closer to the coast.");continue;}sx=water.x;sz=water.z;}const unit={id:"i"+nextId++,kind,x:sx,z:sz,owner:p.id,...stats,maxHp:stats.hp,tx:sx,tz:sz,attackCooldown:0,attackPulse:0,stance:"hold"};p.units.push(unit);}facility.productionQueue.shift();}}
   for(const p of players)if(!p.defeated)for(const tower of p.buildings.filter(b=>b.kind==="tower")){
    let target=null,best=Infinity;for(const enemy of items){if(enemy.owner===p.id||enemy.category!=="unit"||enemy.hp<=0)continue;const d=distance(tower,enemy);if(d<=tower.range&&d<best){best=d;target=enemy;}}
    if(target){const owner=room.state.players[target.owner];const unit=owner?.units.find(u=>u.id===target.id);if(unit)unit.hp-=tower.damage*dt*(terrainAt(unit.x,unit.z)==="forest"?.82:1);}
