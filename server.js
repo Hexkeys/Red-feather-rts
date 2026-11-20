@@ -158,6 +158,23 @@ function distanceToWall(point,wall){
  const t=len2?Math.max(0,Math.min(1,((point.x-ax)*dx+(point.z-az)*dz)/len2)):0;
  return Math.hypot(point.x-(ax+t*dx),point.z-(az+t*dz));
 }
+function wallSegmentsIntersect(a,b){
+ const orient=(p,q,r)=>(q.x-p.x)*(r.z-p.z)-(q.z-p.z)*(r.x-p.x);
+ const a1={x:a.x,z:a.z},a2={x:a.x2,z:a.z2},b1={x:b.x,z:b.z},b2={x:b.x2,z:b.z2};
+ const o1=orient(a1,a2,b1),o2=orient(a1,a2,b2),o3=orient(b1,b2,a1),o4=orient(b1,b2,a2);
+ return ((o1<=0&&o2>=0)||(o1>=0&&o2<=0))&&((o3<=0&&o4>=0)||(o3>=0&&o4<=0));
+}
+function wallToWallDistance(a,b){
+ if(wallSegmentsIntersect(a,b))return 0;
+ return Math.min(distanceToWall({x:a.x,z:a.z},b),distanceToWall({x:a.x2,z:a.z2},b),distanceToWall({x:b.x,z:b.z},a),distanceToWall({x:b.x2,z:b.z2},a));
+}
+function buildingWallClearance(kind){
+ if(kind==="castle")return 10;
+ if(kind==="tower")return 5;
+ if(kind==="dock"||kind==="barracks"||kind==="siegeworkshop")return 5;
+ if(kind==="wall")return 2.6;
+ return 4;
+}
 function blockedByEnemyWall(unit,x,z,items){
  const candidate={x,z};
  return items.some(item=>item.category==="building"&&item.kind==="wall"&&item.owner!==unit.owner&&item.hp>0&&distanceToWall(candidate,item)<1.9);
@@ -357,8 +374,14 @@ wss.on("connection",ws=>{
      const midpoint={x:(item.x+item.x2)/2,z:(item.z+item.z2)/2};
      const nearCastle=allItems(room).some(other=>other.kind==="castle"&&other.owner!==playerId&&distance(midpoint,other)<175);
      if(nearCastle){notice(ws,"That wall is too close to an enemy castle.");return;}
-     const crowded=allItems(room).some(other=>distance(midpoint,other)<length*.22+2.5);
-     if(crowded){notice(ws,"That wall overlaps a nearby structure. Choose another line.");return;}
+     // Only actual player buildings obstruct walls. Decorative grass, rocks and trees
+     // are client scenery, and troops must never make a wall placement fail.
+     const crowded=allItems(room).some(other=>{
+      if(other.category!=="building"||other.hp<=0)return false;
+      if(other.kind==="wall")return wallToWallDistance(item,other)<5.2;
+      return distanceToWall(other,item)<buildingWallClearance(other.kind)+2.2;
+     });
+     if(crowded){notice(ws,"That wall is obstructed by a nearby building or wall. Choose another line.");return;}
     }else{
      const radius=kind==="barracks"||kind==="dock"?4.2:3.2;
      const crowded=allItems(room).some(other=>distance(item,other)<radius+(other.category==="building"?3:1.2));
