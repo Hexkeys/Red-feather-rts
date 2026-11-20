@@ -445,6 +445,7 @@ setInterval(()=>{
    if(u.kind!=="builder"&&u.damage>0){
     for(const enemy of items){
      if(enemy.owner===p.id||enemy.hp<=0||enemy.category!=="unit")continue;
+     if(u.attackZone&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)>u.attackZone.radius)continue;
      const dist=distance(u,enemy);
      if(dist<=u.range&&dist<best){best=dist;target=enemy;}
      if(dist<pursuitDistance){pursuitDistance=dist;pursuitTarget=enemy;}
