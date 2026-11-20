@@ -151,7 +151,26 @@ const sunRayMaterial=new THREE.ShaderMaterial({transparent:true,depthTest:true,d
 const sunRayGroup=new THREE.Group();const raySide=new THREE.Vector3().crossVectors(sunDirection,new THREE.Vector3(0,1,0)).normalize();for(let i=-1;i<=1;i++){const beam=new THREE.Mesh(new THREE.CylinderGeometry(34,34,1650,16,1,true),sunRayMaterial);beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),sunDirection.clone().negate());beam.position.copy(raySide).multiplyScalar(i*115);sunRayGroup.add(beam);}sunRayGroup.renderOrder=2;scene.add(sunRayGroup);
 const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,0,0);controls.maxPolarAngle=1.28;controls.minDistance=110;controls.maxDistance=3400;controls.zoomSpeed=.65;controls.enableDamping=false;controls.enableZoom=true;
 const mat=(c,r=.85)=>new THREE.MeshStandardMaterial({color:c,roughness:r});
-const grass=mat(0x587b48),sand=mat(0xb5a071),stone=mat(0x777b78),wood=mat(0x76502e),roof=mat(0x8b3930),water=mat(0x397d91,.35);
+function makeMasonryTexture(){
+ const canvas=document.createElement('canvas');canvas.width=512;canvas.height=512;const ctx=canvas.getContext('2d');
+ ctx.fillStyle='#777873';ctx.fillRect(0,0,512,512);
+ let seed=731;const rand=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};
+ for(let y=0,row=0;y<512;y+=42,row++){
+  const offset=row%2? -48:0;
+  for(let x=offset-100;x<612;x+=112){
+   const shade=105+Math.floor(rand()*42),w=104+Math.floor(rand()*14),h=34+Math.floor(rand()*7);
+   ctx.fillStyle=`rgb(${shade},${shade+1},${shade-3})`;ctx.fillRect(x+3,y+3,w-6,h-6);
+   ctx.strokeStyle='rgba(25,27,26,.42)';ctx.lineWidth=3;ctx.strokeRect(x+3,y+3,w-6,h-6);
+   ctx.fillStyle='rgba(225,222,207,.12)';ctx.fillRect(x+7,y+6,w-15,2);
+   for(let n=0;n<24;n++){ctx.fillStyle=rand()>.5?'rgba(20,22,21,.13)':'rgba(235,232,218,.10)';ctx.fillRect(x+5+rand()*(w-12),y+5+rand()*(h-12),1+rand()*4,1+rand()*3);}
+  }
+ }
+ const texture=new THREE.CanvasTexture(canvas);texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.repeat.set(1.4,1.4);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=renderer.capabilities.getMaxAnisotropy();
+ return texture;
+}
+const masonryTexture=makeMasonryTexture();
+const stone=new THREE.MeshStandardMaterial({color:0xc2c1b8,map:masonryTexture,bumpMap:masonryTexture,bumpScale:.16,roughness:.96,metalness:0});
+const grass=mat(0x587b48),sand=mat(0xb5a071),wood=mat(0x76502e),roof=mat(0x8b3930),water=mat(0x397d91,.35);
 function riverCenter(z){return Math.sin(z*.00105)*368+Math.sin(z*.00275)*96-140+Math.sin(z*.00048)*110;}
 function islandCoastRadius(x,z){const a=Math.atan2(z,x);return .865+.035*Math.sin(a*3+.4)+.018*Math.sin(a*7-1.1);}
 function terrainHeight(x,z){
@@ -260,7 +279,49 @@ function unit(kind,x,z,color){
  else if(kind==='pikeman'){add(new THREE.CylinderGeometry(.045,.045,2.2,6),wood,.5,2.05,0).rotation.z=-.13;add(new THREE.ConeGeometry(.13,.38,6),steel,.64,3.16,0);}
  else add(new THREE.BoxGeometry(.09,1.15,.12),steel,.48,1.35,0).rotation.z=-.25;}
  if(kind!=='archer'&&kind!=='pikeman'){const shield=add(new THREE.BoxGeometry(.48,.72,.13),kind==='menatarms'?steel:team,-.42,1.02,.35);shield.rotation.z=-.12;add(new THREE.BoxGeometry(.52,.12,.16),leather,-.42,.72,.35);}
- const limbs=[];for(const side of [-1,1]){const leg=add(new THREE.CylinderGeometry(.105,.13,.62,7),dark,side*.16,.34,0);limbs.push(leg);add(new THREE.BoxGeometry(.22,.14,.34),leather,side*.16,.06,.08);const arm=add(new THREE.CylinderGeometry(.09,.12,.58,7),kind==='menatarms'?steel:team,side*.38,1.15,0);arm.rotation.z=side*.22;limbs.push(arm);}
+ const limbs=[];for(const side of [-1,1]){
+  const leg=add(new THREE.CylinderGeometry(.105,.13,.62,9),dark,side*.16,.34,0);limbs.push(leg);
+  add(new THREE.BoxGeometry(.24,.18,.36),leather,side*.16,.07,.08);
+  add(new THREE.BoxGeometry(.27,.22,.38),dark,side*.16,.19,.04);
+  const arm=add(new THREE.CylinderGeometry(.09,.12,.58,9),kind==='menatarms'?steel:team,side*.38,1.15,0);arm.rotation.z=side*.22;limbs.push(arm);
+  if(kind==='menatarms'||kind==='knight'){const pauldron=add(new THREE.SphereGeometry(.22,10,8),steel,side*.39,1.43,0);pauldron.scale.set(1,.72,1.15);}
+ }
+ // Layered clothing, stitched edges and a visible belt make the silhouettes read at game distance.
+ if(!['ship','siege'].includes(kind)){
+  const tunic=add(new THREE.CylinderGeometry(.34,.42,.78,10),kind==='menatarms'?mat(0x59636a):team,0,1.08,0);
+  tunic.scale.z=.82;
+  add(new THREE.BoxGeometry(.68,.12,.12),leather,0,.77,.39);
+  add(new THREE.BoxGeometry(.15,.16,.045),steel,0,.77,.455);
+  add(new THREE.CylinderGeometry(.36,.4,.09,10),leather,0,.67,0);
+  add(new THREE.CylinderGeometry(.29,.3,.08,10),kind==='menatarms'?steel:team,0,1.48,0);
+  // Neck, nose and simple eye details add definition without overloading the low-poly style.
+  add(new THREE.CylinderGeometry(.11,.13,.2,8),skin,0,1.78,0);
+  add(new THREE.BoxGeometry(.08,.11,.12),skin,0,1.76,.23);
+  for(const side of [-1,1])add(new THREE.SphereGeometry(.025,6,6),dark,side*.09,1.82,.225);
+  if(kind==='soldier'||kind==='menatarms'||kind==='pikeman'||kind==='knight'){
+   const helm=add(new THREE.SphereGeometry(.27,10,7,0,Math.PI*2,0,Math.PI*.62),kind==='knight'||kind==='menatarms'?steel:dark,0,1.99,0);
+   helm.scale.set(1,1.05,1);
+   add(new THREE.BoxGeometry(.38,.09,.08),steel,0,1.91,.22);
+   if(kind==='knight'||kind==='menatarms')add(new THREE.ConeGeometry(.055,.3,6),steel,0,2.32,0);
+  }else if(kind==='archer'||kind==='crossbow'){
+   add(new THREE.CylinderGeometry(.27,.28,.12,8),leather,0,1.98,0);
+   add(new THREE.ConeGeometry(.2,.25,6),team,0,2.13,0);
+   const quiver=add(new THREE.CylinderGeometry(.11,.14,.68,7),leather,-.28,1.58,-.22);quiver.rotation.z=-.28;
+   for(let a=-1;a<=1;a++)add(new THREE.CylinderGeometry(.018,.018,.5,5),steel,-.28+a*.06,2.0,-.22);
+  }else if(kind==='builder'){
+   add(new THREE.CylinderGeometry(.28,.3,.13,8),leather,0,1.96,0);
+   add(new THREE.ConeGeometry(.2,.22,6),wood,0,2.12,0);
+   add(new THREE.BoxGeometry(.5,.22,.25),leather,0,1.05,-.27);
+  }
+  if(kind==='knight'){
+   const barding=add(new THREE.BoxGeometry(1.2,.46,.78),team,.58,.88,0);barding.rotation.z=-.08;
+   add(new THREE.BoxGeometry(.16,.5,.82),leather,.58,.88,.02);
+   for(const side of [-1,1])add(new THREE.CylinderGeometry(.12,.14,.62,8),dark,.58,.43,side*.25);
+  }
+  if(kind==='archer'||kind==='crossbow'){
+   add(new THREE.BoxGeometry(.3,.42,.16),leather,.25,1.0,-.32);
+  }
+ }
  g.userData.limbs=limbs;g.position.set(x,kind==='ship'?.65:terrainHeight(x,z),z);g.userData.kind=kind;g.userData.isUnit=true;g.userData.targetX=x;g.userData.targetZ=z;scene.add(g);return g;
 }
 
