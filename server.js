@@ -437,7 +437,7 @@ setInterval(()=>{
   const items=allItems(room);
   for(const p of players)if(!p.defeated)for(const u of p.units){
    const targetsInRange=[];
-   if(u.kind!=="builder"&&u.damage>0){
+   if(u.orderMode!=="move"&&u.kind!=="builder"&&u.damage>0){
     for(const enemy of items){
      if(enemy.owner===p.id||enemy.hp<=0||!["unit","building"].includes(enemy.category))continue;
      if(u.attackZone&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)>u.attackZone.radius)continue;
