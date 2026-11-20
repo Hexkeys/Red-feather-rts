@@ -111,7 +111,7 @@ button,input{font-size:16px}
    <strong>Confirm placement</strong><span>Confirms the current building placement if the location is valid.</span>
    <strong>Cancel</strong><span>Cancels the current building placement.</span>
   </div>
-  <p class="muted" style="margin-top:14px">Tip: use Hold to defend a position. Issue a Move order when you want troops to reposition.</p>
+  <p class="muted" style="margin-top:14px">Troops automatically attack enemy units and buildings whenever they are within their attack range.</p>
  </div>
 </div>
 <div id="join"><div class="joinbox panel"><h2 style="color:var(--gold);font-weight:normal">Enter the Realm</h2><p class="muted">Create an account or log in to continue your kingdom.</p><input id="username" maxlength="16" autocomplete="username" placeholder="Username (3–16 letters, numbers, _)"><input id="password" type="password" maxlength="128" autocomplete="current-password" placeholder="Password (at least 8 characters)"><input id="playername" maxlength="16" placeholder="Lord name shown in game" value="Lord"><input id="roomcode" maxlength="12" placeholder="Realm code" value="KINGDOM"><p id="joinstatus" role="status" aria-live="polite" style="min-height:18px;margin:7px 0;color:#ffd28a;font-size:12px"></p><div style="display:flex;gap:8px;margin-top:8px"><button id="registerbtn" style="flex:1">Create account</button><button id="loginbtn" style="flex:1">Log in</button></div><p class="muted">Your kingdom is linked to your account and realm code. Keep your password private.</p></div></div>
@@ -435,7 +435,7 @@ renderer.domElement.addEventListener('click',e=>{
   if(item.hp!==undefined&&item.tx!==undefined){
    if(!e.shiftKey)selectedUnits=[];
    if(!selectedUnits.some(u=>u.id===item.id))selectedUnits.push(item);
-   currentStance='hold';attackOrderMode=false;moveMode=false;updateSelectionUI();return;
+   attackOrderMode=false;moveMode=false;updateSelectionUI();return;
   }
  }
  const hit=ray.intersectObject(ground)[0];
@@ -450,7 +450,7 @@ renderer.domElement.addEventListener('pointerup',e=>{if(interactionMode!=='selec
 document.querySelector('#attackorder').onclick=()=>{if(!selectedUnits.length){notice('Select troops first.');return;}attackOrderMode=!attackOrderMode;moveMode=false;updateSelectionUI();notice(attackOrderMode?'Tap the map to place a 120-metre Direct Attack circle.':'Direct Attack cancelled.');};document.querySelector('#movearmy').onclick=()=>{setInteractionMode('select');if(!selectedUnits.length){notice('Select troops first.');return;}moveMode=!moveMode;attackOrderMode=false;updateSelectionUI();notice(moveMode?'Move mode: tap a destination on the map.':'Move mode cancelled.');};
 document.querySelector('#clearselect').onclick=()=>{selectedUnits=[];attackOrderMode=false;updateSelectionUI();};
 document.querySelectorAll('[data-formation]').forEach(b=>b.onclick=()=>{currentFormation=b.dataset.formation;if(selectedUnits.length){const cx=selectedUnits.reduce((v,u)=>v+u.x,0)/selectedUnits.length,cz=selectedUnits.reduce((v,u)=>v+u.z,0)/selectedUnits.length;send({type:'order',ids:selectedUnits.map(u=>u.id),x:cx,z:cz,mode:'move',formation:currentFormation});notice('Formation changed to '+currentFormation+'. Your selected troops are arranging now; the next Move order will keep this formation.');}else notice('Formation set to '+currentFormation+'. Select troops and use Move to apply it.');updateSelectionUI();});
-document.querySelectorAll('[data-stance]').forEach(b=>b.onclick=()=>{currentStance='hold';if(selectedUnits.length)send({type:'command',ids:selectedUnits.map(u=>u.id),stance:'hold'});updateSelectionUI();notice('Selected troops set to Hold.');});
+
 document.querySelector('#selectall').onclick=()=>{setInteractionMode('select');selectedUnits=(gameState?.players?.[myId]?.units||[]).filter(u=>u.kind!=='builder'&&u.kind!=='ship');attackOrderMode=false;moveMode=false;updateSelectionUI();notice(selectedUnits.length+' land troops selected. Ships can be selected separately.');};
 document.querySelector('#regroup').onclick=()=>{if(!selectedUnits.length){notice('Select troops first.');return;}const cx=selectedUnits.reduce((v,u)=>v+u.x,0)/selectedUnits.length,cz=selectedUnits.reduce((v,u)=>v+u.z,0)/selectedUnits.length;send({type:'order',ids:selectedUnits.map(u=>u.id),x:cx,z:cz,mode:'move',formation:currentFormation});notice('Your selected troops are regrouping.');};
 renderer.domElement.addEventListener('pointerdown',e=>{if(interactionMode!=='camera'||(e.button!==2&&e.pointerType!=='touch'&&!e.shiftKey))return;mouse.x=e.clientX/innerWidth*2-1;mouse.y=-(e.clientY/innerHeight)*2+1;ray.setFromCamera(mouse,camera);const hits=ray.intersectObjects([...visuals.values()],true);let obj=hits[0]?.object;while(obj&&!obj.userData.item)obj=obj.parent;if(obj?.userData.item&&obj.userData.owner===myId){selected=obj.userData.item;notice('Selected '+selected.kind+'. Tap or right-click a destination to move.')}});
