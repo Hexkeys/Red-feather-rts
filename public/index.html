@@ -383,13 +383,13 @@ renderer.domElement.addEventListener('click',e=>{
  }
  const hit=ray.intersectObject(ground)[0];
  if(hit&&selectedUnits.length){
-  send({type:'order',ids:selectedUnits.map(u=>u.id),x:hit.point.x,z:hit.point.z,mode:attackOrderMode?'attack':'move',formation:currentFormation});
+  send({type:'order',ids:selectedUnits.map(u=>u.id),x:hit.point.x,z:hit.point.z,mode:attackOrderMode?'attack':'move',formation:currentFormation});if(!attackOrderMode&&directAttackMarker){scene.remove(directAttackMarker);directAttackMarker=null;}
   notice(attackOrderMode?'Attack-move order issued.':'Move order issued to '+selectedUnits.length+' selected troops.');
   attackOrderMode=false;moveMode=false;updateSelectionUI();return;
  }
  if(!obj?.userData.item){selectedUnits=[];attackOrderMode=false;updateSelectionUI();}
 });
-renderer.domElement.addEventListener('pointerup',e=>{if(interactionMode!=='select'||e.button!==2||placingKind||!selectedUnits.length)return;mouse.x=e.clientX/innerWidth*2-1;mouse.y=-(e.clientY/innerHeight)*2+1;ray.setFromCamera(mouse,camera);const target=pickItem(e);if(target?.userData.item&&target.userData.owner===myId)return;const hit=ray.intersectObject(ground)[0];if(hit){send({type:'order',ids:selectedUnits.map(u=>u.id),x:hit.point.x,z:hit.point.z,mode:'move',formation:currentFormation});notice('Formation move order issued.');}});
+renderer.domElement.addEventListener('pointerup',e=>{if(interactionMode!=='select'||e.button!==2||placingKind||!selectedUnits.length)return;mouse.x=e.clientX/innerWidth*2-1;mouse.y=-(e.clientY/innerHeight)*2+1;ray.setFromCamera(mouse,camera);const target=pickItem(e);if(target?.userData.item&&target.userData.owner===myId)return;const hit=ray.intersectObject(ground)[0];if(hit){send({type:'order',ids:selectedUnits.map(u=>u.id),x:hit.point.x,z:hit.point.z,mode:'move',formation:currentFormation});if(directAttackMarker){scene.remove(directAttackMarker);directAttackMarker=null;}notice('Formation move order issued.');}});
 document.querySelector('#attackorder').onclick=()=>{if(!selectedUnits.length){notice('Select troops first.');return;}attackOrderMode=!attackOrderMode;moveMode=false;updateSelectionUI();notice(attackOrderMode?'Tap the map to place a 120-metre Direct Attack circle.':'Direct Attack cancelled.');};document.querySelector('#movearmy').onclick=()=>{setInteractionMode('select');if(!selectedUnits.length){notice('Select troops first.');return;}moveMode=!moveMode;attackOrderMode=false;updateSelectionUI();notice(moveMode?'Move mode: tap a destination on the map.':'Move mode cancelled.');};
 document.querySelector('#clearselect').onclick=()=>{selectedUnits=[];attackOrderMode=false;updateSelectionUI();};
 document.querySelectorAll('[data-formation]').forEach(b=>b.onclick=()=>{currentFormation=b.dataset.formation;updateSelectionUI();notice('Formation set to '+currentFormation+'. New group orders will use it.');});
