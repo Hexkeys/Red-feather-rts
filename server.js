@@ -399,7 +399,7 @@ wss.on("connection",ws=>{
   }
   if(msg.type==="move"){
    const unit=me.units.find(u=>u.id===msg.id);
-   if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){if(unit.kind==="ship"){if(terrainAt(msg.x,msg.z)!=="sea"){notice(ws,"Ships can only sail in open water.");return;}const route=findWaterRoute(unit,{x:msg.x,z:msg.z});if(!route){notice(ws,"No clear water route to that destination.");return;}unit.path=route;}unit.tx=clamp(msg.x,-2390,2390);unit.tz=clamp(msg.z,-1790,1790);unit.orderMode="move";return;}
+   if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){delete unit.attackZone;unit.orderMode="move";if(unit.kind==="ship"){if(terrainAt(msg.x,msg.z)!=="sea"){notice(ws,"Ships can only sail in open water.");return;}const route=findWaterRoute(unit,{x:msg.x,z:msg.z});if(!route){notice(ws,"No clear water route to that destination.");return;}unit.path=route;}unit.tx=clamp(msg.x,-2390,2390);unit.tz=clamp(msg.z,-1790,1790);unit.orderMode="move";return;}
   }
  });
  ws.on("close",()=>{
