@@ -160,9 +160,11 @@ function distanceToWall(point,wall){
 }
 function wallSegmentsIntersect(a,b){
  const orient=(p,q,r)=>(q.x-p.x)*(r.z-p.z)-(q.z-p.z)*(r.x-p.x);
+ const onSegment=(p,q,r)=>q.x>=Math.min(p.x,r.x)-1e-8&&q.x<=Math.max(p.x,r.x)+1e-8&&q.z>=Math.min(p.z,r.z)-1e-8&&q.z<=Math.max(p.z,r.z)+1e-8;
  const a1={x:a.x,z:a.z},a2={x:a.x2,z:a.z2},b1={x:b.x,z:b.z},b2={x:b.x2,z:b.z2};
  const o1=orient(a1,a2,b1),o2=orient(a1,a2,b2),o3=orient(b1,b2,a1),o4=orient(b1,b2,a2);
- return ((o1<=0&&o2>=0)||(o1>=0&&o2<=0))&&((o3<=0&&o4>=0)||(o3>=0&&o4<=0));
+ if(((o1>0&&o2<0)||(o1<0&&o2>0))&&((o3>0&&o4<0)||(o3<0&&o4>0)))return true;
+ return (Math.abs(o1)<1e-8&&onSegment(a1,b1,a2))||(Math.abs(o2)<1e-8&&onSegment(a1,b2,a2))||(Math.abs(o3)<1e-8&&onSegment(b1,a1,b2))||(Math.abs(o4)<1e-8&&onSegment(b1,a2,b2));
 }
 function wallToWallDistance(a,b){
  if(wallSegmentsIntersect(a,b))return 0;
