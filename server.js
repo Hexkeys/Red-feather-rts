@@ -390,8 +390,8 @@ wss.on("connection",ws=>{
    const ids=[...new Set(msg.ids.map(String))].slice(0,80),selected=ids.map(id=>me.units.find(u=>u.id===id)).filter(Boolean);
    if(selected.some(u=>u.kind==="ship")&&terrainAt(msg.x,msg.z)!=="sea"){notice(ws,"Ships can only sail in open water. Choose a blue-water destination.");return;}
    if(selected.some(u=>u.kind!=="ship")&&selected.some(u=>u.kind==="ship")){notice(ws,"Select ships separately from land troops.");return;}
-   const mode=msg.mode==="attack"?"attack":"move",formation=["line","column","wedge","box"].includes(msg.formation)?msg.formation:"box",spacing=6.4;
-   selected.forEach((unit,i)=>{let ox=0,oz=0;if(formation==="line"){ox=(i-(selected.length-1)/2)*spacing;}else if(formation==="column"){oz=(i-(selected.length-1)/2)*spacing;}else if(formation==="wedge"){const row=Math.floor((Math.sqrt(8*i+1)-1)/2),col=i-row*(row+1)/2;ox=(col-row/2)*spacing;oz=row*spacing*.78;}else{const cols=Math.max(1,Math.ceil(Math.sqrt(selected.length))),rows=Math.ceil(selected.length/cols);ox=(i%cols-(cols-1)/2)*spacing;oz=(Math.floor(i/cols)-(rows-1)/2)*spacing;}
+   const mode=msg.mode==="attack"?"attack":msg.mode==="zone"?"zone":"move",formation=["line","column","wedge","box"].includes(msg.formation)?msg.formation:"box",spacing=6.4;
+   selected.forEach((unit,i)=>{if(mode==="zone"){unit.attackZone={x:clamp(msg.x,-2390,2390),z:clamp(msg.z,-1790,1790),radius:clamp(Number(msg.radius)||120,30,240)};unit.tx=unit.x;unit.tz=unit.z;unit.orderMode="zone";delete unit.path;return;}delete unit.attackZone;let ox=0,oz=0;if(formation==="line"){ox=(i-(selected.length-1)/2)*spacing;}else if(formation==="column"){oz=(i-(selected.length-1)/2)*spacing;}else if(formation==="wedge"){const row=Math.floor((Math.sqrt(8*i+1)-1)/2),col=i-row*(row+1)/2;ox=(col-row/2)*spacing;oz=row*spacing*.78;}else{const cols=Math.max(1,Math.ceil(Math.sqrt(selected.length))),rows=Math.ceil(selected.length/cols);ox=(i%cols-(cols-1)/2)*spacing;oz=(Math.floor(i/cols)-(rows-1)/2)*spacing;}
     const tx=clamp(msg.x+ox,-2390,2390),tz=clamp(msg.z+oz,-1790,1790);
     if(unit.kind==="ship"){const route=findWaterRoute(unit, {x:tx,z:tz});if(!route){notice(ws,"No clear water route to that destination. Choose a closer point at sea.");return;}unit.path=route;}else delete unit.path;
     unit.tx=tx;unit.tz=tz;unit.orderMode=mode;});
@@ -449,6 +449,7 @@ setInterval(()=>{
      if(dist<=u.range&&dist<best){best=dist;target=enemy;}
      if(dist<pursuitDistance){pursuitDistance=dist;pursuitTarget=enemy;}
     }
+    if(u.attackZone){for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||!["unit","building"].includes(enemy.category))continue;const zoneDistance=Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z);if(zoneDistance>u.attackZone.radius)continue;const dist=enemy.kind==="wall"?distanceToWall(u,enemy):distance(u,enemy);if(dist<best){best=dist;target=enemy;}}}
     if(!target&&u.orderMode==="attack"){
      for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||enemy.category!=="building")continue;const dist=enemy.kind==="wall"?distanceToWall(u,enemy):distance(u,enemy);const attackReach=u.range+(enemy.kind==="wall"?1.9:0);if(dist<=attackReach&&dist<best){best=dist;target=enemy;}}
     }
@@ -457,10 +458,11 @@ setInterval(()=>{
    const manualDistance=distance(u,{x:Number.isFinite(u.tx)?u.tx:u.x,z:Number.isFinite(u.tz)?u.tz:u.z});
    const hasManualMove=manualDistance>1.2;
    let moveTarget=u.kind==="ship"&&u.path?.length?u.path[0]:{x:u.tx,z:u.tz};
-   if(stance!=="hold"&&!hasManualMove&&!target&&pursuitTarget&&pursuitDistance<=(u.engageRange||34))moveTarget={x:pursuitTarget.x,z:pursuitTarget.z};
+   if(stance!=="hold"&&!hasManualMove&&!target&&u.attackZone){const zoneTargets=items.filter(enemy=>enemy.owner!==p.id&&enemy.hp>0&&["unit","building"].includes(enemy.category)&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)<=u.attackZone.radius).sort((a,b)=>distance(u,a)-distance(u,b));if(zoneTargets.length)moveTarget={x:zoneTargets[0].x,z:zoneTargets[0].z};else moveTarget={x:u.x,z:u.z};}
+   else if(stance!=="hold"&&!hasManualMove&&!target&&pursuitTarget&&pursuitDistance<=(u.engageRange||34))moveTarget={x:pursuitTarget.x,z:pursuitTarget.z};
    const dx=moveTarget.x-u.x,dz=moveTarget.z-u.z,d=Math.hypot(dx,dz);
    const manualMoving=stance!=="hold"&&hasManualMove;
-   const approaching=stance!=="hold"&&!hasManualMove&&!target&&pursuitTarget&&pursuitDistance<=(u.engageRange||34)&&pursuitDistance>u.range*.9;
+   const approaching=stance!=="hold"&&!hasManualMove&&!target&&((u.attackZone&&Math.hypot(moveTarget.x-u.x,moveTarget.z-u.z)>.15)||(pursuitTarget&&pursuitDistance<=(u.engageRange||34)&&pursuitDistance>u.range*.9));
    if(d>.15&&(manualMoving||approaching||(!target&&!pursuitTarget&&stance!=="hold"))){
     const step=Math.min(d,u.speed*terrainSpeed(u)*dt);
     if(u.kind==="ship"&&d<=step+.01){u.x=moveTarget.x;u.z=moveTarget.z;if(u.path?.length)u.path.shift();}
