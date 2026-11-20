@@ -450,7 +450,7 @@ setInterval(()=>{
      if(dist<=u.range&&dist<best){best=dist;target=enemy;}
      if(dist<pursuitDistance){pursuitDistance=dist;pursuitTarget=enemy;}
     }
-    if(u.attackZone){for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||!["unit","building"].includes(enemy.category))continue;const zoneDistance=Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z);if(zoneDistance>u.attackZone.radius)continue;const dist=enemy.kind==="wall"?distanceToWall(u,enemy):distance(u,enemy);if(dist<best){best=dist;target=enemy;}}}
+    if(u.attackZone&&!pursuitTarget){for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||enemy.category!=="building")continue;const zoneDistance=Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z);if(zoneDistance>u.attackZone.radius)continue;const dist=enemy.kind==="wall"?distanceToWall(u,enemy):distance(u,enemy);if(dist<=u.range+(enemy.kind==="wall"?1.9:0)&&dist<best){best=dist;target=enemy;}}}
     if(!target&&u.orderMode==="attack"){
      for(const enemy of items){if(enemy.owner===p.id||enemy.hp<=0||enemy.category!=="building")continue;const dist=enemy.kind==="wall"?distanceToWall(u,enemy):distance(u,enemy);const attackReach=u.range+(enemy.kind==="wall"?1.9:0);if(dist<=attackReach&&dist<best){best=dist;target=enemy;}}
     }
@@ -459,7 +459,7 @@ setInterval(()=>{
    const manualDistance=distance(u,{x:Number.isFinite(u.tx)?u.tx:u.x,z:Number.isFinite(u.tz)?u.tz:u.z});
    const hasManualMove=manualDistance>1.2;
    let moveTarget=u.kind==="ship"&&u.path?.length?u.path[0]:{x:u.tx,z:u.tz};
-   if(stance!=="hold"&&!hasManualMove&&!target&&u.attackZone){const zoneTargets=items.filter(enemy=>enemy.owner!==p.id&&enemy.hp>0&&["unit","building"].includes(enemy.category)&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)<=u.attackZone.radius).sort((a,b)=>distance(u,a)-distance(u,b));if(zoneTargets.length)moveTarget={x:zoneTargets[0].x,z:zoneTargets[0].z};else moveTarget={x:u.x,z:u.z};}
+   if(stance!=="hold"&&!hasManualMove&&!target&&u.attackZone){const zoneUnits=items.filter(enemy=>enemy.owner!==p.id&&enemy.hp>0&&enemy.category==="unit"&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)<=u.attackZone.radius);const zoneTargets=zoneUnits.length?zoneUnits:items.filter(enemy=>enemy.owner!==p.id&&enemy.hp>0&&enemy.category==="building"&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)<=u.attackZone.radius);zoneTargets.sort((a,b)=>distance(u,a)-distance(u,b));if(zoneTargets.length)moveTarget={x:zoneTargets[0].x,z:zoneTargets[0].z};else moveTarget={x:u.x,z:u.z};}
    else if(stance!=="hold"&&!hasManualMove&&!target&&pursuitTarget&&pursuitDistance<=(u.engageRange||34))moveTarget={x:pursuitTarget.x,z:pursuitTarget.z};
    const dx=moveTarget.x-u.x,dz=moveTarget.z-u.z,d=Math.hypot(dx,dz);
    const manualMoving=stance!=="hold"&&hasManualMove;
