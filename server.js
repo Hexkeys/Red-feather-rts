@@ -391,6 +391,16 @@ wss.on("connection",ws=>{
    saveStore();
    return;
   }
+  if(msg.type==="production-auto"){
+   const buildingId=String(msg.buildingId||""),facility=me.buildings.find(b=>b.id===buildingId);
+   if(!facility||!["barracks","archery","stable","siegeworkshop","dock"].includes(facility.kind)){notice(ws,"Select one of your troop-production buildings.");return;}
+   const kind=String(msg.kind||"");
+   if(!kind){facility.autoProduceKind=null;broadcast(room,snapshot(room));notice(ws,"Automatic production stopped.");return;}
+   const required=kind==="ship"?"dock":(kind==="archer"||kind==="crossbow")?"archery":(kind==="knight"||kind==="lightcavalry")?"stable":(kind==="siege"||kind==="engineer")?"siegeworkshop":["soldier","menatarms","pikeman"].includes(kind)?"barracks":"";
+   if(!required||facility.kind!==required||!UNIT_STATS[kind]||!COSTS[kind]){notice(ws,"That troop cannot be produced in this building.");return;}
+   if(facility.underConstruction){notice(ws,"Finish building this facility before starting automatic production.");return;}
+   facility.autoProduceKind=kind;broadcast(room,snapshot(room));notice(ws,"Automatic production enabled for "+kind+".");return;
+  }
   if(msg.type==="action"){
    const kind=String(msg.kind||""),cost=COSTS[kind];if(!cost)return;
    const supply=8+me.buildings.filter(b=>b.kind==="house").length*4;
@@ -538,7 +548,19 @@ setInterval(()=>{
     }
    }else if(!target)u.attackCooldown=Math.max(0,(u.attackCooldown||0)-dt);
   }
-  for(const p of players)if(!p.defeated)for(const facility of p.buildings){if(!facility.productionQueue?.length)continue;const job=facility.productionQueue[0];job.remaining-=dt;if(job.remaining<=0){const kind=job.kind,stats=UNIT_STATS[kind];if(stats){let sx=facility.x+7,sz=facility.z+5;if(kind==="ship"){const water=findNearbySea(facility.x,facility.z,300);if(!water){facility.productionQueue.shift();notice(room.players.get(p.id)?.ws,"This harbor has no nearby water. Build it closer to the coast.");continue;}sx=water.x;sz=water.z;}const unit={id:"i"+nextId++,kind,x:sx,z:sz,owner:p.id,...stats,maxHp:stats.hp,tx:sx,tz:sz,attackCooldown:0,attackPulse:0,};p.units.push(unit);}facility.productionQueue.shift();}}
+  for(const p of players)if(!p.defeated)for(const facility of p.buildings){
+   if(!Array.isArray(facility.productionQueue))facility.productionQueue=[];
+   if(!facility.productionQueue.length&&facility.autoProduceKind&&!facility.underConstruction){
+    const kind=facility.autoProduceKind,cost=COSTS[kind],supply=8+p.buildings.filter(b=>b.kind==="house").length*4,queued=p.buildings.reduce((n,b)=>n+(b.productionQueue?.length||0),0);
+    if(!cost||!UNIT_STATS[kind]){facility.autoProduceKind=null;}
+    else if(p.units.filter(u=>u.kind!=="builder").length+queued>=supply){facility.autoProduceKind=null;notice(room.players.get(p.id)?.ws,"Auto production stopped: army supply is full. Build more houses.");}
+    else if(Object.entries(cost).some(([resource,amount])=>(p[resource]||0)<amount)){facility.autoProduceKind=null;notice(room.players.get(p.id)?.ws,"Auto production stopped: not enough resources.");}
+    else{for(const[resource,amount]of Object.entries(cost))p[resource]-=amount;facility.productionQueue.push({kind,remaining:10});}
+   }
+   if(!facility.productionQueue.length)continue;
+   const job=facility.productionQueue[0];job.remaining-=dt;
+   if(job.remaining<=0){const kind=job.kind,stats=UNIT_STATS[kind];if(stats){let sx=facility.x+7,sz=facility.z+5;if(kind==="ship"){const water=findNearbySea(facility.x,facility.z,300);if(!water){facility.productionQueue.shift();facility.autoProduceKind=null;notice(room.players.get(p.id)?.ws,"This harbor has no nearby water. Automatic production stopped.");continue;}sx=water.x;sz=water.z;}const unit={id:"i"+nextId++,kind,x:sx,z:sz,owner:p.id,...stats,maxHp:stats.hp,tx:sx,tz:sz,attackCooldown:0,attackPulse:0,};p.units.push(unit);}facility.productionQueue.shift();}
+  }
   for(const p of players)if(!p.defeated)for(const tower of p.buildings.filter(b=>b.kind==="tower")){
    let target=null,best=Infinity;for(const enemy of items){if(enemy.owner===p.id||enemy.category!=="unit"||enemy.hp<=0)continue;const d=distance(tower,enemy);if(d<=tower.range&&d<best){best=d;target=enemy;}}
    if(target){const owner=room.state.players[target.owner];const unit=owner?.units.find(u=>u.id===target.id);if(unit)unit.hp-=tower.damage*dt*(terrainAt(unit.x,unit.z)==="forest"?.82:1);}
