@@ -149,7 +149,7 @@ scene.add(new THREE.HemisphereLight(0xe5f1ff,0x65734c,1.05));const fillLight=new
 const sun=new THREE.DirectionalLight(0xffe3b5,3.0);const sunDirection=new THREE.Vector3(-.43,.82,.38).normalize();sun.position.copy(sunDirection).multiplyScalar(1800);sun.castShadow=true;sun.shadow.mapSize.set(isMobile?1024:2048,isMobile?1024:2048);sun.shadow.camera.left=-1050;sun.shadow.camera.right=1050;sun.shadow.camera.top=1050;sun.shadow.camera.bottom=-1050;sun.shadow.camera.near=1;sun.shadow.camera.far=3000;sun.shadow.bias=-.00008;sun.shadow.normalBias=.025;sun.shadow.radius=isMobile?2:3;sun.shadow.camera.updateProjectionMatrix();sun.shadow.autoUpdate=true;scene.add(sun);scene.add(sun.target);
 const sunRayMaterial=new THREE.ShaderMaterial({transparent:true,depthTest:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,uniforms:{uTime:{value:0}},vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,fragmentShader:`varying vec2 vUv;uniform float uTime;void main(){float edge=smoothstep(0.0,.22,vUv.x)*(1.0-smoothstep(.78,1.0,vUv.x));float fade=smoothstep(0.0,.08,vUv.y)*(1.0-smoothstep(.82,1.0,vUv.y));float bands=.45+.35*sin(vUv.x*19.0+sin(vUv.y*4.0+uTime*.035));float alpha=edge*fade*bands*.055;gl_FragColor=vec4(1.0,.82,.57,alpha);}`});
 const sunRayGroup=new THREE.Group();const raySide=new THREE.Vector3().crossVectors(sunDirection,new THREE.Vector3(0,1,0)).normalize();for(let i=-1;i<=1;i++){const beam=new THREE.Mesh(new THREE.CylinderGeometry(34,34,1650,16,1,true),sunRayMaterial);beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),sunDirection.clone().negate());beam.position.copy(raySide).multiplyScalar(i*115);sunRayGroup.add(beam);}sunRayGroup.renderOrder=2;scene.add(sunRayGroup);
-const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,0,0);controls.maxPolarAngle=1.28;controls.minDistance=24;controls.maxDistance=5200;controls.zoomSpeed=.9;controls.enableDamping=false;controls.enableZoom=true;
+const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,0,0);controls.maxPolarAngle=1.34;controls.minDistance=9;controls.maxDistance=5200;controls.zoomSpeed=1.05;controls.enableDamping=false;controls.enableZoom=true;
 const mat=(c,r=.85)=>new THREE.MeshStandardMaterial({color:c,roughness:r});
 function makeMasonryTexture(){
  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=512;const ctx=canvas.getContext('2d');
@@ -279,21 +279,33 @@ if(kind!=='tower'&&kind!=='wall'&&kind!=='dock'){const foundation=new THREE.Mesh
 g.scale.setScalar(kind==='tower'?1.32:kind==='dock'?1.3:kind==='barracks'?1.48:1.42);g.position.set(x,0,z);g.userData.kind=kind;g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});scene.add(g);return g}
 function unit(kind,x,z,color){
  const g=new THREE.Group(),team=mat(color),dark=mat(0x34383a,.92),steel=mat(0x9da7aa,.28),leather=mat(0x76513a,.78),skin=mat(0xd7ad86,.9);steel.metalness=.72;
- const add=(geo,m,px,py,pz)=>{const o=new THREE.Mesh(geo,m);o.position.set(px,py,pz);o.castShadow=false;o.receiveShadow=false;g.add(o);return o;};
- if(kind==="builder"){add(new THREE.CylinderGeometry(.3,.4,1.1,7),wood,0,1.05,0);add(new THREE.SphereGeometry(.24,8,8),skin,0,1.75,0);add(new THREE.BoxGeometry(.12,.8,.12),wood,.48,1.15,0);add(new THREE.BoxGeometry(.42,.18,.18),steel,.48,1.55,0);}
- else if(kind==='ship'){add(new THREE.BoxGeometry(2.8,.55,1.05),leather,0,.55,0);add(new THREE.ConeGeometry(.78,1.7,4),mat(0xd8d0b6),0,1.65,0).rotation.z=Math.PI/2;add(new THREE.CylinderGeometry(.07,.07,2.8,6),wood,0,1.8,0).rotation.z=Math.PI/2;}
+ const add=(geo,m,px,py,pz)=>{const o=new THREE.Mesh(geo,m);o.position.set(px,py,pz);o.castShadow=true;o.receiveShadow=true;g.add(o);return o;};
+ if(kind==='ship'){add(new THREE.BoxGeometry(2.8,.55,1.05),leather,0,.55,0);add(new THREE.ConeGeometry(.78,1.7,4),mat(0xd8d0b6),0,1.65,0).rotation.z=Math.PI/2;add(new THREE.CylinderGeometry(.07,.07,2.8,6),wood,0,1.8,0).rotation.z=Math.PI/2;}
  else if(kind==='siege'){add(new THREE.BoxGeometry(1.8,.5,1.15),leather,0,.7,0);for(const a of [-.65,.65])for(const b of [-.58,.58])add(new THREE.CylinderGeometry(.27,.27,.16,10),dark,a,.34,b).rotation.x=Math.PI/2;add(new THREE.BoxGeometry(.22,1.6,.22),wood,0,1.55,0);add(new THREE.BoxGeometry(.14,1.25,.14),steel,.28,1.65,0);}
- else if(kind==='knight'){add(new THREE.BoxGeometry(1.45,.82,.68),leather,0,.85,0);add(new THREE.SphereGeometry(.38,10,8),leather,.62,1.03,0);for(const a of [-.48,.48])for(const b of [-.25,.25])add(new THREE.CylinderGeometry(.12,.14,.65,7),dark,a,.43,b);add(new THREE.CylinderGeometry(.27,.32,.85,8),team,-.12,1.55,0);add(new THREE.SphereGeometry(.23,10,8),skin,-.12,2.1,0);add(new THREE.ConeGeometry(.29,.35,6),steel,-.12,2.38,0);add(new THREE.BoxGeometry(.08,1.1,.1),steel,.45,1.9,0).rotation.z=-.2;}
- else{add(new THREE.CylinderGeometry(.34,.43,1.05,8),kind==='pikeman'?steel:team,0,1.05,0);add(new THREE.SphereGeometry(.25,10,8),skin,0,1.75,0);add(new THREE.ConeGeometry(.29,.4,6),kind==='pikeman'?steel:dark,0,2.05,0);add(new THREE.BoxGeometry(.42,.12,.3),team,0,1.28,.34);
- if(kind==='archer'){const bow=add(new THREE.TorusGeometry(.43,.045,6,16,Math.PI),wood,.48,1.2,0);bow.rotation.z=Math.PI/2;add(new THREE.CylinderGeometry(.035,.035,1.25,6),wood,.62,1.55,0).rotation.z=-.18;}
- else if(kind==='pikeman'){add(new THREE.CylinderGeometry(.045,.045,2.2,6),wood,.5,2.05,0).rotation.z=-.13;add(new THREE.ConeGeometry(.13,.38,6),steel,.64,3.16,0);}
- else add(new THREE.BoxGeometry(.09,1.15,.12),steel,.48,1.35,0).rotation.z=-.25;}
- if(kind!=='archer'&&kind!=='pikeman'){const shield=add(new THREE.BoxGeometry(.48,.72,.13),kind==='menatarms'?steel:team,-.42,1.02,.35);shield.rotation.z=-.12;add(new THREE.BoxGeometry(.52,.12,.16),leather,-.42,.72,.35);}
+ else if(kind==='knight'){ // Mount: the rider is supplied by the articulated rig below.
+  add(new THREE.BoxGeometry(1.45,.82,.68),leather,0,.85,0);
+  add(new THREE.SphereGeometry(.38,12,10),leather,.62,1.03,0);
+  for(const a of [-.48,.48])for(const b of [-.25,.25]){const leg=add(new THREE.CylinderGeometry(.12,.14,.65,8),dark,a,.43,b);leg.rotation.z=a*.18;}
+  add(new THREE.CylinderGeometry(.27,.32,.85,10),team,-.12,1.55,0);
+ }
  // Articulated pivots for shoulders, elbows, hips and knees.
  const rig={leftArm:new THREE.Group(),rightArm:new THREE.Group(),leftForearm:new THREE.Group(),rightForearm:new THREE.Group(),leftLeg:new THREE.Group(),rightLeg:new THREE.Group(),leftShin:new THREE.Group(),rightShin:new THREE.Group(),torso:new THREE.Group()};
  rig.torso.position.set(0,1.05,0);g.add(rig.torso);
  const armored=kind==='menatarms'||kind==='knight',armMat=armored?steel:team;
  const segment=(parent,geo,material,y,z=0)=>{const mesh=new THREE.Mesh(geo,material);mesh.position.set(0,y,z);mesh.castShadow=true;mesh.receiveShadow=true;parent.add(mesh);return mesh;};
+  // Layered clothing and armor make the articulated body read clearly at close zoom.
+  const tunicMat=mat(kind==='builder'?0x8b7448:color),trimMat=mat(kind==='builder'?0x5a4930:0xc4a45e),clothDark=mat(0x493d32),metalDark=mat(0x59646a,.42);
+  segment(rig.torso,new THREE.CapsuleGeometry(.285,.47,5,10),tunicMat,.015);
+  const chestPanel=segment(rig.torso,new THREE.BoxGeometry(.34,.46,.075),armored?steel:trimMat,.04,.245);
+  const belt=segment(rig.torso,new THREE.BoxGeometry(.54,.105,.34),leather,-.29,.015);
+  const buckle=segment(rig.torso,new THREE.BoxGeometry(.105,.105,.035),trimMat,-.29,.2);
+  const collar=segment(rig.torso,new THREE.TorusGeometry(.17,.035,6,12),armored?steel:leather,.29);collar.rotation.x=Math.PI/2;
+  const cloak=segment(rig.torso,new THREE.BoxGeometry(.48,.72,.055),kind==='builder'?clothDark:trimMat,.0,-.205);cloak.rotation.x=-.08;
+  for(const side of [-1,1]){
+   const pauldron=segment(rig.torso,new THREE.SphereGeometry(armored?.19:.145,10,8),armored?steel:trimMat,.34,side*.39);pauldron.scale.set(1,.68,1);
+   if(armored){const rivet=segment(rig.torso,new THREE.SphereGeometry(.035,6,5),metalDark,.35,side*.39+.13);rivet.position.z=.13;}
+   const bracer=segment(side===-1?rig.leftForearm:rig.rightForearm,new THREE.BoxGeometry(.19,.22,.16),armored?metalDark:leather,-.29,.045);bracer.rotation.x=-.12;
+  }
  if(kind!=='ship'&&kind!=='siege'){
   for(const [side,arm,forearm,leg,shin] of [[-1,rig.leftArm,rig.leftForearm,rig.leftLeg,rig.leftShin],[1,rig.rightArm,rig.rightForearm,rig.rightLeg,rig.rightShin]]){
    arm.position.set(side*.39,.34,0);rig.torso.add(arm);
@@ -314,6 +326,8 @@ function unit(kind,x,z,color){
   const skull=new THREE.Mesh(new THREE.SphereGeometry(.245,12,10),skin);skull.scale.set(.9,1.08,.88);head.add(skull);
   const nose=new THREE.Mesh(new THREE.ConeGeometry(.065,.17,6),skin);nose.rotation.x=Math.PI/2;nose.position.set(0,-.01,.22);head.add(nose);
   for(const side of [-1,1]){const eye=new THREE.Mesh(new THREE.SphereGeometry(.025,6,6),dark);eye.position.set(side*.09,.045,.205);head.add(eye);}
+  for(const side of [-1,1]){const ear=new THREE.Mesh(new THREE.SphereGeometry(.055,7,6),skin);ear.position.set(side*.225,-.005,0);head.add(ear);}
+  if(!armored){const hair=new THREE.Mesh(new THREE.SphereGeometry(.255,10,7,0,Math.PI*2,0,Math.PI*.48),kind==='builder'?leather:clothDark);hair.position.y=.045;hair.rotation.x=-.12;head.add(hair);const brow=new THREE.Mesh(new THREE.BoxGeometry(.2,.035,.035),clothDark);brow.position.set(0,.085,.208);head.add(brow);}
   if(armored){const helmet=new THREE.Mesh(new THREE.SphereGeometry(.275,12,8,0,Math.PI*2,0,Math.PI*.62),steel);helmet.position.y=.055;head.add(helmet);const visor=new THREE.Mesh(new THREE.BoxGeometry(.38,.09,.08),dark);visor.position.set(0,-.015,.22);head.add(visor);if(kind==='knight'||kind==='menatarms'){const crest=new THREE.Mesh(new THREE.ConeGeometry(.055,.3,6),roof);crest.position.y=.34;head.add(crest);}}
   else if(kind==='archer'||kind==='crossbow'||kind==='builder'){const cap=new THREE.Mesh(new THREE.CylinderGeometry(.27,.28,.12,9),leather);cap.position.y=.17;head.add(cap);}
   // Equipment is parented to hands, allowing it to move with the animated arms.
