@@ -107,6 +107,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server, maxPayload: 4096 });
 const rooms = new Map();
 let nextId = 1;
+let debugResetInProgress = false;
 
 const COSTS = {
   house:{wood:90}, farm:{wood:65}, lumberyard:{wood:80}, quarry:{wood:80,stone:25}, mine:{wood:110,stone:25}, market:{wood:100,stone:40}, barracks:{wood:120,stone:35}, archery:{wood:100,stone:25}, stable:{wood:150,stone:60}, siegeworkshop:{wood:180,stone:100}, tower:{wood:55,stone:70}, wall:{wood:100,stone:75}, dock:{wood:150,stone:40},
@@ -151,6 +152,28 @@ function send(ws,data){if(ws.readyState===1)ws.send(JSON.stringify(data));}
 function broadcast(room,data){for(const p of room.players.values())send(p.ws,data);}
 function snapshot(room){return{type:"state",players:room.state.players,chat:room.state.chat.slice(-30)};}
 function notice(ws,text){send(ws,{type:"notice",text});}
+function verifyDebugAdminPassword(candidate){
+ const configured=process.env.DEBUG_ADMIN_PASSWORD;
+ if(!configured||typeof candidate!=="string")return false;
+ const expected=crypto.createHash("sha256").update(configured).digest();
+ const actual=crypto.createHash("sha256").update(candidate).digest();
+ return crypto.timingSafeEqual(expected,actual);
+}
+function resetAllGameProgress(){
+ store={accounts:{},rooms:{}};
+ rooms.clear();
+ nextId=1;
+ const temp=SAVE_FILE+".admin-reset.tmp";
+ fs.mkdirSync(DATA_DIR,{recursive:true});
+ fs.writeFileSync(temp,JSON.stringify(store),{mode:0o600});
+ fs.renameSync(temp,SAVE_FILE);
+ for(const client of wss.clients){
+  client.skipSaveOnClose=true;
+  send(client,{type:"debug-admin",ok:true,resetting:true,message:"All accounts and realm progress have been reset. Reconnect and create a new account."});
+  try{client.close(4001,"Game progress reset by DEBUG administrator");}catch{}
+ }
+ console.log("DEBUG administrator reset all accounts and realm progress.");
+}
 function distance(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
 function distanceToWall(point,wall){
  const ax=wall.x,az=wall.z,bx=Number.isFinite(wall.x2)?wall.x2:wall.x,bz=Number.isFinite(wall.z2)?wall.z2:wall.z;
@@ -281,6 +304,21 @@ wss.on("connection",ws=>{
    if (!result.ok) { send(ws, { type: "auth", ok: false, error: result.error }); return; }
    ws.authUser = username;
    send(ws, { type: "auth", ok: true, username });
+   return;
+  }
+  if(msg.type==="debug-admin-auth"){
+   if(ws.roomCode!=="DEBUG"){send(ws,{type:"debug-admin",ok:false,message:"The admin panel is only available in the DEBUG realm."});return;}
+   if(!process.env.DEBUG_ADMIN_PASSWORD){send(ws,{type:"debug-admin",ok:false,message:"DEBUG_ADMIN_PASSWORD is not configured on the server."});return;}
+   ws.debugAdminAuthed=verifyDebugAdminPassword(msg.password);
+   send(ws,{type:"debug-admin",ok:ws.debugAdminAuthed,message:ws.debugAdminAuthed?"Admin access granted.":"Incorrect admin password."});
+   return;
+  }
+  if(msg.type==="debug-admin-reset"){
+   if(ws.roomCode!=="DEBUG"||!ws.debugAdminAuthed){send(ws,{type:"debug-admin",ok:false,message:"Admin authentication required."});return;}
+   if(debugResetInProgress)return;
+   debugResetInProgress=true;
+   try{resetAllGameProgress();}catch(error){console.error("DEBUG reset failed:",error);send(ws,{type:"debug-admin",ok:false,message:"Reset failed. Check server logs."});}
+   finally{debugResetInProgress=false;}
    return;
   }
   if(msg.type==="join"){
@@ -428,7 +466,7 @@ wss.on("connection",ws=>{
   }
  });
  ws.on("close",()=>{
-  if(room&&playerId){const p=room.players.get(playerId);room.players.delete(playerId);
+  if(!ws.skipSaveOnClose&&room&&playerId){const p=room.players.get(playerId);room.players.delete(playerId);
    const savedPlayer=room.state.players[playerId];
    if(savedPlayer){
     // Park the complete kingdom off the active map. Its buildings cannot block
