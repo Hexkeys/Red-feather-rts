@@ -302,7 +302,7 @@ function unit(kind,x,z,color){
   const collar=segment(rig.torso,new THREE.TorusGeometry(.17,.035,6,12),armored?steel:leather,.29);collar.rotation.x=Math.PI/2;
   const cloak=segment(rig.torso,new THREE.BoxGeometry(.48,.72,.055),kind==='builder'?clothDark:trimMat,.0,-.205);cloak.rotation.x=-.08;
   for(const side of [-1,1]){
-   const pauldron=segment(rig.torso,new THREE.SphereGeometry(armored?.19:.145,10,8),armored?steel:trimMat,.34,side*.39);pauldron.scale.set(1,.68,1);
+   const pauldron=segment(rig.torso,new THREE.SphereGeometry(armored?.19:.145,10,8),armored?steel:trimMat,.34);pauldron.position.x=side*.39;pauldron.scale.set(1,.68,1);
    if(armored){const rivet=segment(rig.torso,new THREE.SphereGeometry(.035,6,5),metalDark,.35,side*.39+.13);rivet.position.z=.13;}
    const bracer=segment(side===-1?rig.leftForearm:rig.rightForearm,new THREE.BoxGeometry(.19,.22,.16),armored?metalDark:leather,-.29,.045);bracer.rotation.x=-.12;
   }
