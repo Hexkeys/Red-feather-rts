@@ -527,6 +527,24 @@ renderer.domElement.addEventListener('pointerup',e=>{
 });
 renderer.domElement.addEventListener('pointercancel',()=>{dragSelecting=false;selectionStart=null;selectionMoved=false;selectionMarquee.style.display='none';});
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
+function createTerrainRingGeometry(cx,cz,innerRadius,outerRadius,segments=96,lift=.38){
+ const baseY=terrainHeight(cx,cz),positions=[],indices=[];
+ for(let i=0;i<=segments;i++){
+  const a=i/segments*Math.PI*2,dx=Math.cos(a),dz=Math.sin(a);
+  for(const radius of [innerRadius,outerRadius]){
+   const ox=dx*radius,oz=dz*radius;
+   positions.push(ox,terrainHeight(cx+ox,cz+oz)-baseY+lift,oz);
+  }
+ }
+ for(let i=0;i<segments;i++){
+  const a=i*2,b=a+1,c=a+2,d=a+3;
+  indices.push(a,c,b,b,c,d);
+ }
+ const geometry=new THREE.BufferGeometry();
+ geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+ geometry.setIndex(indices);geometry.computeVertexNormals();
+ return geometry;
+}
 function updateAttackRangeRings(){const wanted=new Set();if(showAttackRanges){for(const u of selectedUnits){const radius=Number(u.range)||0;if(radius<=0)continue;wanted.add(u.id);let ring=attackRangeRings.get(u.id);if(!ring){ring=new THREE.Mesh(new THREE.RingGeometry(Math.max(.1,radius-.55),radius,64),new THREE.MeshBasicMaterial({color:0x70c9ff,side:THREE.DoubleSide,transparent:true,opacity:.38,depthWrite:false}));ring.rotation.x=-Math.PI/2;ring.renderOrder=7;scene.add(ring);attackRangeRings.set(u.id,ring);}ring.position.set(u.x,terrainHeight(u.x,u.z)+.55,u.z);}}for(const [id,ring] of attackRangeRings){if(!wanted.has(id)){scene.remove(ring);ring.geometry.dispose();ring.material.dispose();attackRangeRings.delete(id);}}}
 function updateSelectionUI(){const el=document.querySelector('#troopselection');el.textContent=selectedUnits.length?selectedUnits.length+' troops selected · '+(interactionMode==='select'?'Drag to mass-select · click ground to move':'Switch to Select Mode to select'):'No troops selected · Select Mode, then drag a box around troops';document.querySelector('#commandstatus').textContent=selectedUnits.length?selectedUnits.length+' under command · '+currentFormation+' formation · Auto-attack enabled':'Select troops to issue orders';document.querySelectorAll('[data-formation]').forEach(b=>b.classList.toggle('active',b.dataset.formation===currentFormation));document.querySelector('#attackorder').classList.toggle('active',attackOrderMode);document.querySelector('#cameramode').classList.toggle('active',interactionMode==='camera');document.querySelector('#selectmode').classList.toggle('active',interactionMode==='select');for(const [id,ring] of selectionRings){if(!selectedUnits.some(u=>u.id===id)){scene.remove(ring);selectionRings.delete(id);}}updateAttackRangeRings();for(const u of selectedUnits){if(!selectionRings.has(u.id)){const ring=new THREE.Mesh(new THREE.RingGeometry(1.15,1.42,24),new THREE.MeshBasicMaterial({color:0xffdf83,side:THREE.DoubleSide,transparent:true,opacity:.9}));ring.rotation.x=-Math.PI/2;scene.add(ring);selectionRings.set(u.id,ring);}selectionRings.get(u.id).position.set(u.x,visuals.get(u.id)?.position.y+.35||terrainHeight(u.x,u.z)+.35,u.z);}}
 function pickItem(e){mouse.x=e.clientX/innerWidth*2-1;mouse.y=-(e.clientY/innerHeight)*2+1;ray.setFromCamera(mouse,camera);const hits=ray.intersectObjects([...visuals.values()],true);let obj=hits[0]?.object;while(obj&&!obj.userData.item)obj=obj.parent;return obj;}
@@ -534,7 +552,7 @@ renderer.domElement.addEventListener('click',e=>{
  if(suppressSelectionClick){suppressSelectionClick=false;return;}
  if(placingKind||interactionMode!=='select')return;
  mouse.x=e.clientX/innerWidth*2-1;mouse.y=-(e.clientY/innerHeight)*2+1;ray.setFromCamera(mouse,camera);
- if(attackOrderMode){const zoneHit=ray.intersectObject(ground)[0];if(zoneHit&&selectedUnits.length){const center={x:zoneHit.point.x,z:zoneHit.point.z};send({type:'order',ids:selectedUnits.map(u=>u.id),x:center.x,z:center.z,radius:DIRECT_ATTACK_RADIUS,mode:'zone',formation:currentFormation});if(directAttackMarker)scene.remove(directAttackMarker);directAttackMarker=new THREE.Mesh(new THREE.RingGeometry(DIRECT_ATTACK_RADIUS-2,DIRECT_ATTACK_RADIUS,96),new THREE.MeshBasicMaterial({color:0xff2424,side:THREE.DoubleSide,transparent:true,opacity:.9,depthWrite:false}));directAttackMarker.rotation.x=-Math.PI/2;directAttackMarker.position.set(center.x,terrainHeight(center.x,center.z)+.8,center.z);directAttackMarker.renderOrder=8;scene.add(directAttackMarker);notice('Attack Move zone set. Selected troops will move toward and attack enemy units and buildings inside the red circle.');attackOrderMode=false;moveMode=false;updateSelectionUI();return;} }
+ if(attackOrderMode){const zoneHit=ray.intersectObject(ground)[0];if(zoneHit&&selectedUnits.length){const center={x:zoneHit.point.x,z:zoneHit.point.z};send({type:'order',ids:selectedUnits.map(u=>u.id),x:center.x,z:center.z,radius:DIRECT_ATTACK_RADIUS,mode:'zone',formation:currentFormation});if(directAttackMarker)scene.remove(directAttackMarker);directAttackMarker=new THREE.Mesh(createTerrainRingGeometry(center.x,center.z,DIRECT_ATTACK_RADIUS-2,DIRECT_ATTACK_RADIUS,128,.42),new THREE.MeshBasicMaterial({color:0xff2424,side:THREE.DoubleSide,transparent:true,opacity:.9,depthWrite:false}));directAttackMarker.position.set(center.x,terrainHeight(center.x,center.z),center.z);directAttackMarker.renderOrder=8;scene.add(directAttackMarker);notice('Attack Move zone set. Selected troops will move toward and attack enemy units and buildings inside the red circle.');attackOrderMode=false;moveMode=false;updateSelectionUI();return;} }
  const obj=pickItem(e);
  if(obj?.userData.item&&obj.userData.owner===myId){
   const item=obj.userData.item;
