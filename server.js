@@ -4,46 +4,22 @@ const { WebSocketServer } = require("ws");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+const { Pool } = require("pg");
+const pool = process.env.DATABASE_URL ? new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==="disable"?false:{rejectUnauthorized:false},max:5,idleTimeoutMillis:30000,connectionTimeoutMillis:10000}) : null;
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 if (process.env.RENDER && !process.env.DATA_DIR) console.warn("Render detected: set DATA_DIR=/var/data and attach a persistent disk at /var/data to keep saves across restarts.");
 const SAVE_FILE = path.join(DATA_DIR, "red-feather-save.json");
 let store = { accounts: {}, rooms: {} };
-function loadStore() {
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    if (fs.existsSync(SAVE_FILE)) {
-      const loaded = JSON.parse(fs.readFileSync(SAVE_FILE, "utf8"));
-      if (loaded && typeof loaded === "object") store = {
-        accounts: loaded.accounts && typeof loaded.accounts === "object" ? loaded.accounts : {},
-        rooms: loaded.rooms && typeof loaded.rooms === "object" ? loaded.rooms : {}
-      };
-    }
-  } catch (error) {
-    console.error("Could not load saved game data:", error.message);
-  }
+async function loadStore(){
+ if(!pool)throw new Error("DATABASE_URL is required. Configure the Render PostgreSQL Internal Database URL.");
+ await pool.query("CREATE TABLE IF NOT EXISTS red_feather_game_state(id SMALLINT PRIMARY KEY CHECK(id=1),data JSONB NOT NULL,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+ const r=await pool.query("SELECT data FROM red_feather_game_state WHERE id=1");
+ if(r.rows.length&&r.rows[0].data){const v=r.rows[0].data;store={accounts:v.accounts&&typeof v.accounts==="object"?v.accounts:{},rooms:v.rooms&&typeof v.rooms==="object"?v.rooms:{}};}
+ else{try{if(fs.existsSync(SAVE_FILE)){const v=JSON.parse(fs.readFileSync(SAVE_FILE,"utf8"));if(v&&typeof v==="object")store={accounts:v.accounts||{},rooms:v.rooms||{}};}}catch(e){console.warn("Old local save import failed:",e.message);}await pool.query("INSERT INTO red_feather_game_state(id,data) VALUES(1,$1::jsonb) ON CONFLICT(id) DO NOTHING",[JSON.stringify(store)]);}
+ console.log("Game state loaded from PostgreSQL.");
 }
-function saveStore() {
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    for (const [code, room] of rooms) {
-      store.rooms[code] = {
-        state: room.state,
-        playerAccounts: Object.fromEntries(room.playerAccounts),
-        playerSlots: Object.fromEntries(room.playerSlots),
-        parkedPlayers: room.parkedPlayers,
-        nextId
-      };
-    }
-    const temp = SAVE_FILE + ".tmp";
-    fs.writeFileSync(temp, JSON.stringify(store), { mode: 0o600 });
-    fs.renameSync(temp, SAVE_FILE);
-    return true;
-  } catch (error) {
-    console.error("Could not save game data:", error.message);
-    return false;
-  }
-}
+async function saveStore(){try{for(const[code,room]of rooms)store.rooms[code]={state:room.state,playerAccounts:Object.fromEntries(room.playerAccounts),playerSlots:Object.fromEntries(room.playerSlots),parkedPlayers:room.parkedPlayers,nextId};if(!pool)throw new Error("DATABASE_URL is not configured.");await pool.query("INSERT INTO red_feather_game_state(id,data,updated_at) VALUES(1,$1::jsonb,NOW()) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=NOW()",[JSON.stringify(store)]);return true;}catch(e){console.error("PostgreSQL save failed:",e.message);return false;}}
 function normalizeUsername(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -53,7 +29,7 @@ function validUsername(value) {
 function hashPassword(password, salt) {
   return crypto.scryptSync(password, salt, 64);
 }
-function authenticate(mode, username, password) {
+async function authenticate(mode, username, password) {
   if (!validUsername(username)) return { ok: false, error: "Username must be 3–16 letters, numbers, or underscores." };
   if (typeof password !== "string" || password.length < 8 || password.length > 128) {
     return { ok: false, error: "Password must be 8–128 characters." };
@@ -64,7 +40,7 @@ function authenticate(mode, username, password) {
     const salt = crypto.randomBytes(16).toString("hex");
     const hash = hashPassword(password, salt).toString("hex");
     store.accounts[username] = { salt, hash };
-    if (!saveStore()) {
+    if (!(await saveStore())) {
       delete store.accounts[username];
       return { ok: false, error: "The server could not save your new account. Please try again later or contact the game owner." };
     }
@@ -78,14 +54,13 @@ function authenticate(mode, username, password) {
   }
   return { ok: true };
 }
-loadStore();
-
+// Load PostgreSQL before opening the server.
 // One-time full game reset requested by the owner on 2026-11-19.
 // Accounts are global, so this clears every saved account and realm once.
 // Write the empty save directly here: the room manager is initialized below,
 // so saveStore() must not be called until after that initialization.
 const RESET_MARKER = path.join(DATA_DIR, "red-feather-full-reset-2026-11-19.done");
-if (!fs.existsSync(RESET_MARKER)) {
+if (!pool && !fs.existsSync(RESET_MARKER)) {
   try {
     store = { accounts: {}, rooms: {} };
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -159,14 +134,13 @@ function verifyDebugAdminPassword(candidate){
  const actual=crypto.createHash("sha256").update(candidate).digest();
  return crypto.timingSafeEqual(expected,actual);
 }
-function resetAllGameProgress(){
+async function resetAllGameProgress(){
  store={accounts:{},rooms:{}};
  rooms.clear();
  nextId=1;
  const temp=SAVE_FILE+".admin-reset.tmp";
  fs.mkdirSync(DATA_DIR,{recursive:true});
- fs.writeFileSync(temp,JSON.stringify(store),{mode:0o600});
- fs.renameSync(temp,SAVE_FILE);
+ await pool.query("INSERT INTO red_feather_game_state(id,data,updated_at) VALUES(1,$1::jsonb,NOW()) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=NOW()",[JSON.stringify(store)]);
  for(const client of wss.clients){
   client.skipSaveOnClose=true;
   send(client,{type:"debug-admin",ok:true,resetting:true,message:"All accounts and realm progress have been reset. Reconnect and create a new account."});
@@ -174,7 +148,7 @@ function resetAllGameProgress(){
  }
  console.log("DEBUG administrator reset all accounts and realm progress.");
 }
-function grantResourcesToPlayer(username,realmCode,amounts){
+async function grantResourcesToPlayer(username,realmCode,amounts){
  const code=String(realmCode||"").toUpperCase();
  const liveRoom=rooms.get(code);
  const saved=store.rooms[code];
@@ -188,7 +162,7 @@ function grantResourcesToPlayer(username,realmCode,amounts){
  const keys=["gold","wood","food","stone"];
  const before={};
  for(const key of keys){before[key]=Number.isFinite(player[key])?player[key]:0;player[key]=Math.min(Number.MAX_SAFE_INTEGER,before[key]+amounts[key]);}
- if(!saveStore()){for(const key of keys)player[key]=before[key];return {ok:false,message:"The server could not save the resource update."};}
+ if(!(await saveStore())){for(const key of keys)player[key]=before[key];return {ok:false,message:"The server could not save the resource update."};}
  if(liveRoom&&liveRoom.state.players?.[playerId])broadcast(liveRoom,snapshot(liveRoom));
  return {ok:true,realm:code};
 }
@@ -313,12 +287,12 @@ function allItems(room){const out=[];for(const p of Object.values(room.state.pla
 
 wss.on("connection",ws=>{
  let room,playerId;
- ws.on("message",raw=>{
+ ws.on("message",async raw=>{
   let msg;try{msg=JSON.parse(raw.toString())}catch{return}
   if (msg.type === "auth") {
    if (room || ws.authUser) return;
    const username = normalizeUsername(msg.username);
-   const result = authenticate(msg.mode, username, msg.password);
+   const result = await authenticate(msg.mode, username, msg.password);
    if (!result.ok) { send(ws, { type: "auth", ok: false, error: result.error }); return; }
    ws.authUser = username;
    send(ws, { type: "auth", ok: true, username });
@@ -341,7 +315,7 @@ wss.on("connection",ws=>{
     send(ws,{type:"debug-admin-resources",ok:false,message:"Check the username, realm code, and resource amounts."});return;
    }
    try{
-    const result=grantResourcesToPlayer(username,realm,resources);
+    const result=await grantResourcesToPlayer(username,realm,resources);
     send(ws,{type:"debug-admin-resources",ok:result.ok,message:result.ok?"Resources added to "+username+" in realm "+realm+".":result.message});
    }catch(error){console.error("DEBUG resource grant failed:",error);send(ws,{type:"debug-admin-resources",ok:false,message:"Resource grant failed. Check server logs."});}
    return;
@@ -350,7 +324,7 @@ wss.on("connection",ws=>{
    if(ws.roomCode!=="DEBUG"||!ws.debugAdminAuthed){send(ws,{type:"debug-admin",ok:false,message:"Admin authentication required."});return;}
    if(debugResetInProgress)return;
    debugResetInProgress=true;
-   try{resetAllGameProgress();}catch(error){console.error("DEBUG reset failed:",error);send(ws,{type:"debug-admin",ok:false,message:"Reset failed. Check server logs."});}
+   try{await resetAllGameProgress();}catch(error){console.error("DEBUG reset failed:",error);send(ws,{type:"debug-admin",ok:false,message:"Reset failed. Check server logs."});}
    finally{debugResetInProgress=false;}
    return;
   }
@@ -405,7 +379,7 @@ wss.on("connection",ws=>{
    room.players.set(playerId,{ws,name:savedPlayer.name,color:savedPlayer.color,username:ws.authUser});
    ws.roomCode=code;ws.playerId=playerId;
    send(ws,{type:"welcome",id:playerId,room:code,color:savedPlayer.color,name:savedPlayer.name});
-   saveStore();
+   await saveStore();
    broadcast(room,snapshot(room));broadcast(room,{type:"notice",text:savedPlayer.name+" joined the realm."});return;
   }
   if(!room||!playerId)return;
@@ -421,7 +395,7 @@ wss.on("connection",ws=>{
    if(selectedBuilding?.id===buildingId)selectedBuilding=null;
    broadcast(room,snapshot(room));
    notice(ws,building.kind+" demolished. Resources are not refunded.");
-   saveStore();
+   await saveStore();
    return;
   }
   if(msg.type==="production-auto"){
@@ -508,7 +482,7 @@ wss.on("connection",ws=>{
    if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){delete unit.attackZone;unit.orderMode="move";if(unit.kind==="ship"){if(terrainAt(msg.x,msg.z)!=="sea"){notice(ws,"Ships can only sail in open water.");return;}const route=findWaterRoute(unit,{x:msg.x,z:msg.z});if(!route){notice(ws,"No clear water route to that destination.");return;}unit.path=route;}unit.tx=clamp(msg.x,-2390,2390);unit.tz=clamp(msg.z,-1790,1790);unit.orderMode="move";return;}
   }
  });
- ws.on("close",()=>{
+ ws.on("close",async()=>{
   if(!ws.skipSaveOnClose&&room&&playerId){const p=room.players.get(playerId);room.players.delete(playerId);
    const savedPlayer=room.state.players[playerId];
    if(savedPlayer){
@@ -518,7 +492,7 @@ wss.on("connection",ws=>{
     delete room.state.players[playerId];
    }
    if(p){broadcast(room,snapshot(room));broadcast(room,{type:"notice",text:p.name+" left the realm. Their kingdom has been safely stored."});}
-   saveStore();
+   await saveStore();
   }
  });
 });
@@ -607,12 +581,13 @@ setInterval(()=>{
   broadcast(room,snapshot(room));
  }
 },250);
-const saveTimer = setInterval(saveStore, 2000);
+const saveTimer=setInterval(()=>{saveStore().catch(e=>console.error("Autosave failed:",e.message));},20000);
 const port=process.env.PORT||3000;
-server.listen(port,"0.0.0.0",()=>console.log("Red Feather RTS listening on "+port+"; save file: "+SAVE_FILE));
-function shutdown() {
+async function startServer(){try{await loadStore();server.listen(port,"0.0.0.0",()=>console.log("Red Feather RTS listening on "+port+"; PostgreSQL autosave every 20 seconds."));}catch(e){console.error("PostgreSQL startup failed:",e.message);process.exit(1);}}
+startServer();
+async function shutdown() {
   clearInterval(saveTimer);
-  saveStore();
+  await saveStore();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();
 }
