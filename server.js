@@ -174,35 +174,23 @@ function resetAllGameProgress(){
  }
  console.log("DEBUG administrator reset all accounts and realm progress.");
 }
-function grantResourcesToAllPlayers(amounts){
- const resourceKeys=["gold","wood","food","stone"];
- const targets=[];
- const roomCodes=new Set([...Object.keys(store.rooms),...rooms.keys()]);
- for(const code of roomCodes){
-  const liveRoom=rooms.get(code);
-  const saved=store.rooms[code];
-  const playerRecords=liveRoom
-   ? [...Object.values(liveRoom.state.players||{}),...Object.values(liveRoom.parkedPlayers||{})]
-   : [...Object.values(saved?.state?.players||{}),...Object.values(saved?.parkedPlayers||{})];
-  const seen=new Set();
-  for(const player of playerRecords){
-   if(!player||typeof player!=="object"||seen.has(player))continue;
-   seen.add(player);
-   const before={};
-   for(const key of resourceKeys){
-    before[key]=Number.isFinite(player[key])?player[key]:0;
-    player[key]=Math.min(Number.MAX_SAFE_INTEGER,before[key]+amounts[key]);
-   }
-   targets.push({player,before});
-  }
- }
- if(!targets.length)return {ok:false,count:0};
- if(!saveStore()){
-  for(const target of targets)for(const key of resourceKeys)target.player[key]=target.before[key];
-  return {ok:false,count:0};
- }
- for(const room of rooms.values())broadcast(room,snapshot(room));
- return {ok:true,count:targets.length};
+function grantResourcesToPlayer(username,realmCode,amounts){
+ const code=String(realmCode||"").toUpperCase();
+ const liveRoom=rooms.get(code);
+ const saved=store.rooms[code];
+ if(!liveRoom&&!saved)return {ok:false,message:"That realm was not found."};
+ const accountMap=liveRoom?liveRoom.playerAccounts:new Map(Object.entries(saved?.playerAccounts||{}));
+ const playerEntry=[...accountMap.entries()].find(([,account])=>String(account).toLowerCase()===username);
+ if(!playerEntry)return {ok:false,message:"That username does not have a kingdom in that realm."};
+ const playerId=playerEntry[0];
+ const player=liveRoom?(liveRoom.state.players?.[playerId]||liveRoom.parkedPlayers?.[playerId]):(saved?.state?.players?.[playerId]||saved?.parkedPlayers?.[playerId]);
+ if(!player||typeof player!=="object")return {ok:false,message:"The player's saved kingdom could not be found in that realm."};
+ const keys=["gold","wood","food","stone"];
+ const before={};
+ for(const key of keys){before[key]=Number.isFinite(player[key])?player[key]:0;player[key]=Math.min(Number.MAX_SAFE_INTEGER,before[key]+amounts[key]);}
+ if(!saveStore()){for(const key of keys)player[key]=before[key];return {ok:false,message:"The server could not save the resource update."};}
+ if(liveRoom&&liveRoom.state.players?.[playerId])broadcast(liveRoom,snapshot(liveRoom));
+ return {ok:true,realm:code};
 }
 function distance(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
 function distanceToWall(point,wall){
@@ -345,14 +333,16 @@ wss.on("connection",ws=>{
   }
   if(msg.type==="debug-admin-grant-resources"){
    if(ws.roomCode!=="DEBUG"||!ws.debugAdminAuthed){send(ws,{type:"debug-admin-resources",ok:false,message:"Admin authentication required."});return;}
+   const username=String(msg.username||"").trim().toLowerCase();
+   const realm=String(msg.realm||"").trim().toUpperCase();
    const resources=msg.resources;
    const keys=["gold","wood","food","stone"];
-   if(!resources||typeof resources!=="object"||Array.isArray(resources)||keys.some(key=>!Number.isSafeInteger(resources[key])||resources[key]<0||resources[key]>1000000000)||!keys.some(key=>resources[key]>0)){
-    send(ws,{type:"debug-admin-resources",ok:false,message:"Invalid amounts. Use whole numbers from 0 to 1,000,000,000, with at least one amount above zero."});return;
+   if(!/^[a-z0-9_]{3,16}$/.test(username)||!/^[A-Z0-9_-]{1,12}$/.test(realm)||!resources||typeof resources!=="object"||Array.isArray(resources)||keys.some(key=>!Number.isSafeInteger(resources[key])||resources[key]<0||resources[key]>1000000000)||!keys.some(key=>resources[key]>0)){
+    send(ws,{type:"debug-admin-resources",ok:false,message:"Check the username, realm code, and resource amounts."});return;
    }
    try{
-    const result=grantResourcesToAllPlayers(resources);
-    send(ws,{type:"debug-admin-resources",ok:result.ok,message:result.ok?"Added resources to "+result.count+" player kingdom(s) across all realms.":"No saved player kingdoms were found, or the server could not save the update."});
+    const result=grantResourcesToPlayer(username,realm,resources);
+    send(ws,{type:"debug-admin-resources",ok:result.ok,message:result.ok?"Resources added to "+username+" in realm "+realm+".":result.message});
    }catch(error){console.error("DEBUG resource grant failed:",error);send(ws,{type:"debug-admin-resources",ok:false,message:"Resource grant failed. Check server logs."});}
    return;
   }
