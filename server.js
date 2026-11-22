@@ -86,18 +86,18 @@ let nextId = 1;
 let debugResetInProgress = false;
 
 const COSTS = {
-  house:{wood:90}, farm:{wood:65}, lumberyard:{wood:80}, quarry:{wood:80,stone:25}, mine:{wood:110,stone:25}, market:{wood:100,stone:40}, barracks:{wood:120,stone:35}, archery:{wood:100,stone:25}, stable:{wood:150,stone:60}, siegeworkshop:{wood:180,stone:100}, tower:{wood:55,stone:70}, wall:{wood:100,stone:75}, dock:{wood:150,stone:40},
+  house:{wood:90}, farm:{wood:65}, lumberyard:{wood:80}, quarry:{wood:80,stone:25}, mine:{wood:110,stone:25}, market:{wood:100,stone:40}, barracks:{wood:120,stone:35}, archery:{wood:100,stone:25}, stable:{wood:150,stone:60}, siegeworkshop:{wood:180,stone:100}, tower:{wood:55,stone:70}, wall:{wood:100,stone:75},
   soldier:{gold:45,food:35}, menatarms:{gold:85,food:45}, archer:{gold:55,wood:15,food:30}, crossbow:{gold:75,wood:25,food:35}, knight:{gold:110,food:55}, lightcavalry:{gold:85,food:50},
-  pikeman:{gold:65,wood:10,food:40}, siege:{gold:160,wood:90}, engineer:{gold:95,wood:35,food:30}, ship:{gold:130,wood:120,food:25}
+  pikeman:{gold:65,wood:10,food:40}, siege:{gold:160,wood:90}, engineer:{gold:95,wood:35,food:30}
 };
 const UNIT_STATS = {builder:{hp:90,damage:0,range:0,speed:3.1,engageRange:0},
   soldier:{hp:100,damage:12,range:2.1,speed:3.3,engageRange:34,attackRate:1.05}, menatarms:{hp:155,damage:19,range:2.2,speed:2.8,engageRange:34,attackRate:1.15},
   archer:{hp:65,damage:10,range:25,speed:3.0,engageRange:42,attackRate:1.35}, crossbow:{hp:85,damage:17,range:21,speed:2.5,engageRange:40,attackRate:1.75},
   knight:{hp:180,damage:22,range:2.5,speed:4.6,engageRange:38,attackRate:1.05}, lightcavalry:{hp:115,damage:15,range:2.2,speed:5.4,engageRange:38,attackRate:1.0},
   pikeman:{hp:125,damage:17,range:2.3,speed:3.0,engageRange:34,attackRate:1.1},
-  siege:{hp:220,damage:38,range:18,speed:1.5,engageRange:48,attackRate:2.5}, engineer:{hp:90,damage:7,range:1.8,speed:2.7,engageRange:28,attackRate:1.2}, ship:{hp:260,damage:25,range:16,speed:2.4,engageRange:42,attackRate:1.6}
+  siege:{hp:220,damage:38,range:18,speed:1.5,engageRange:48,attackRate:2.5}, engineer:{hp:90,damage:7,range:1.8,speed:2.7,engageRange:28,attackRate:1.2}
 };
-const BUILDING_STATS = {castle:{hp:2400},house:{hp:260},farm:{hp:180},lumberyard:{hp:220},quarry:{hp:260},mine:{hp:360},market:{hp:300},barracks:{hp:500},archery:{hp:420},stable:{hp:480},siegeworkshop:{hp:520},tower:{hp:420,damage:18,range:11},wall:{hp:1600},dock:{hp:450}};
+const BUILDING_STATS = {castle:{hp:2400},house:{hp:260},farm:{hp:180},lumberyard:{hp:220},quarry:{hp:260},mine:{hp:360},market:{hp:300},barracks:{hp:500},archery:{hp:420},stable:{hp:480},siegeworkshop:{hp:520},tower:{hp:420,damage:18,range:11},wall:{hp:1600}};
 const BUILDINGS = new Set(Object.keys(BUILDING_STATS));
 const UNITS = new Set(Object.keys(UNIT_STATS));
 
@@ -113,6 +113,7 @@ function roomFor(code) {
       if (player && !parkedPlayers[id]) parkedPlayers[id] = player;
     }
     restoredState.players = {};
+    for(const player of Object.values(parkedPlayers)){if(!player)continue;player.buildings=(player.buildings||[]).filter(b=>b.kind!=="dock");player.units=(player.units||[]).filter(u=>u.kind!=="ship");for(const b of player.buildings){if(b.productionQueue)b.productionQueue=b.productionQueue.filter(job=>job.kind!=="ship");if(b.autoProduceKind==="ship")b.autoProduceKind=null;}}
     rooms.set(code, {
       players: new Map(),
       playerAccounts: new Map(Object.entries(saved?.playerAccounts || {})),
@@ -189,7 +190,7 @@ function wallToWallDistance(a,b){
 function buildingWallClearance(kind){
  if(kind==="castle")return 10;
  if(kind==="tower")return 5;
- if(kind==="dock"||kind==="barracks"||kind==="siegeworkshop")return 5;
+ if(kind==="barracks"||kind==="siegeworkshop")return 5;
  if(kind==="wall")return 2.6;
  return 4;
 }
@@ -281,7 +282,7 @@ function terrainAttack(unit,target){
  if(unit.kind==="knight"&&target.kind==="archer")m*=1.25;
  return m;
 }
-function structureDamage(unit,target){let m=1;if(target.category!=="building")return m;if(unit.kind==="siege")m=3.2;else if(unit.kind==="engineer")m=1.8;else if(unit.kind==="knight"||unit.kind==="menatarms")m=1.15;else if(unit.kind==="archer"||unit.kind==="crossbow"||unit.kind==="ship")m=.45;else m=.7;if(target.kind==="tower"&&unit.kind!=="siege"&&unit.kind!=="engineer")m*=.8;return m;}
+function structureDamage(unit,target){let m=1;if(target.category!=="building")return m;if(unit.kind==="siege")m=3.2;else if(unit.kind==="engineer")m=1.8;else if(unit.kind==="knight"||unit.kind==="menatarms")m=1.15;else if(unit.kind==="archer"||unit.kind==="crossbow")m=.45;else m=.7;if(target.kind==="tower"&&unit.kind!=="siege"&&unit.kind!=="engineer")m*=.8;return m;}
 function terrainSpeed(unit){const t=terrainAt(unit.x,unit.z);return t==="road"?1.22:t==="river"?(unit.kind==="knight"?.62:.82):t==="marsh"?(unit.kind==="knight"?.58:.78):t==="forest"?.88:t==="mountain"?.68:t==="hill"?.86:1;}
 function terrainCover(target){const t=terrainAt(target.x,target.z);return t==="forest"?.68:t==="mountain"?.72:t==="hill"?.84:t==="marsh"?.92:1;}
 function allItems(room){const out=[];for(const p of Object.values(room.state.players)){for(const b of p.buildings)out.push({...b,owner:p.id,category:"building"});for(const u of p.units)out.push({...u,owner:p.id,category:"unit"});}return out;}
@@ -401,10 +402,10 @@ wss.on("connection",ws=>{
   }
   if(msg.type==="production-auto"){
    const buildingId=String(msg.buildingId||""),facility=me.buildings.find(b=>b.id===buildingId);
-   if(!facility||!["barracks","archery","stable","siegeworkshop","dock"].includes(facility.kind)){notice(ws,"Select one of your troop-production buildings.");return;}
+   if(!facility||!["barracks","archery","stable","siegeworkshop"].includes(facility.kind)){notice(ws,"Select one of your troop-production buildings.");return;}
    const kind=String(msg.kind||"");
    if(!kind){facility.autoProduceKind=null;broadcast(room,snapshot(room));notice(ws,"Automatic production stopped.");return;}
-   const required=kind==="ship"?"dock":(kind==="archer"||kind==="crossbow")?"archery":(kind==="knight"||kind==="lightcavalry")?"stable":(kind==="siege"||kind==="engineer")?"siegeworkshop":["soldier","menatarms","pikeman"].includes(kind)?"barracks":"";
+   const required=(kind==="archer"||kind==="crossbow")?"archery":(kind==="knight"||kind==="lightcavalry")?"stable":(kind==="siege"||kind==="engineer")?"siegeworkshop":["soldier","menatarms","pikeman"].includes(kind)?"barracks":"";
    if(!required||facility.kind!==required||!UNIT_STATS[kind]||!COSTS[kind]){notice(ws,"That troop cannot be produced in this building.");return;}
    if(facility.underConstruction){notice(ws,"Finish building this facility before starting automatic production.");return;}
    facility.autoProduceKind=kind;broadcast(room,snapshot(room));notice(ws,"Automatic production enabled for "+kind+".");return;
@@ -414,13 +415,12 @@ wss.on("connection",ws=>{
    const supply=8+me.buildings.filter(b=>b.kind==="house").length*4;
    const queuedUnits=me.buildings.reduce((n,b)=>n+(b.productionQueue?.length||0),0);
    if(UNITS.has(kind)&&kind!=="builder"&&me.units.filter(u=>u.kind!=="builder").length+queuedUnits>=supply){notice(ws,"Army supply is full. Build houses to support more units.");return;}
-   if(UNITS.has(kind)){const facility=me.buildings.find(b=>b.id===String(msg.buildingId));const required=kind==="ship"?"dock":(kind==="archer"||kind==="crossbow")?"archery":(kind==="knight"||kind==="lightcavalry")?"stable":(kind==="siege"||kind==="engineer")?"siegeworkshop":"barracks";if(!facility||facility.kind!==required){const labels={dock:"Harbor",archery:"Archery Range",stable:"Stable",siegeworkshop:"Siege Workshop",barracks:"Barracks"};notice(ws,"Select your "+labels[required]+" to recruit this unit.");return;}}
+   if(UNITS.has(kind)){const facility=me.buildings.find(b=>b.id===String(msg.buildingId));const required=(kind==="archer"||kind==="crossbow")?"archery":(kind==="knight"||kind==="lightcavalry")?"stable":(kind==="siege"||kind==="engineer")?"siegeworkshop":"barracks";if(!facility||facility.kind!==required){const labels={archery:"Archery Range",stable:"Stable",siegeworkshop:"Siege Workshop",barracks:"Barracks"};notice(ws,"Select your "+labels[required]+" to recruit this unit.");return;}}
    if(Object.entries(cost).some(([k,v])=>me[k]<v)){notice(ws,"Not enough resources.");return;}
    const isBuilding=BUILDINGS.has(kind);
    const px=Number(msg.x),pz=Number(msg.z);
    const item={id:"i"+nextId++,kind,x:isBuilding?clamp(Number.isFinite(px)?px:me.x,-2370,2370):clamp(me.x+clamp(Number.isFinite(px)?px:0,-5,5),-2370,2370),z:isBuilding?clamp(Number.isFinite(pz)?pz:0,-1770,1770):clamp(Number.isFinite(pz)?pz:0,-5,5),owner:playerId};
    if(isBuilding){
-    if(kind==="dock"&&(terrainAt(item.x,item.z)==="sea"||terrainAt(item.x,item.z)==="river"||!findNearbySea(item.x,item.z,300))){notice(ws,"Place the harbor on land close to the island shoreline so ships can launch.");return;}
     const nearEnemyCastle=allItems(room).some(other=>other.kind==="castle"&&other.owner!==playerId&&distance(item,other)<175);
     if(nearEnemyCastle){notice(ws,"That blueprint is too close to an enemy castle. Choose a safer location.");return;}
     if(kind==="wall"){
@@ -428,7 +428,7 @@ wss.on("connection",ws=>{
      if(!Number.isFinite(x2)||!Number.isFinite(z2)){notice(ws,"Choose both ends of the wall.");return;}
      item.x2=clamp(x2,-2370,2370);item.z2=clamp(z2,-1770,1770);
      const length=distance(item,{x:item.x2,z:item.z2});
-     if(length<6||length>90){notice(ws,"City wall sections must be between 6 and 90 metres.");return;}
+     if(length<6||length>300){notice(ws,"City wall sections must be between 6 and 300 metres.");return;}
      const midpoint={x:(item.x+item.x2)/2,z:(item.z+item.z2)/2};
      const nearCastle=allItems(room).some(other=>other.kind==="castle"&&other.owner!==playerId&&distance(midpoint,other)<175);
      if(nearCastle){notice(ws,"That wall is too close to an enemy castle.");return;}
@@ -436,12 +436,12 @@ wss.on("connection",ws=>{
      // are client scenery, and troops must never make a wall placement fail.
      const crowded=allItems(room).some(other=>{
       if(other.category!=="building"||other.hp<=0)return false;
-      if(other.kind==="wall")return wallToWallDistance(item,other)<5.2;
+      if(other.kind==="wall"){const shared=[[item.x,item.z,other.x,other.z],[item.x,item.z,other.x2,other.z2],[item.x2,item.z2,other.x,other.z],[item.x2,item.z2,other.x2,other.z2]].some(([ax,az,bx,bz])=>Math.hypot(ax-bx,az-bz)<1.5);return !shared&&wallToWallDistance(item,other)<5.2;}
       return distanceToWall(other,item)<buildingWallClearance(other.kind)+2.2;
      });
      if(crowded){notice(ws,"That wall is obstructed by a nearby building or wall. Choose another line.");return;}
     }else{
-     const radius=kind==="barracks"||kind==="dock"?4.2:3.2;
+     const radius=kind==="barracks"?4.2:3.2;
      const crowded=allItems(room).some(other=>distance(item,other)<radius+(other.category==="building"?3:1.2));
      if(crowded){notice(ws,"That spot is occupied. Choose another location.");return;}
     }
