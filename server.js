@@ -4,6 +4,7 @@ const { WebSocketServer } = require("ws");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+const AUTOSAVE_INTERVAL_MS = 20_000;
 const { Pool } = require("pg");
 const pool = process.env.DATABASE_URL ? new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==="disable"?false:{rejectUnauthorized:false},max:5,idleTimeoutMillis:30000,connectionTimeoutMillis:10000}) : null;
 
@@ -581,7 +582,7 @@ setInterval(()=>{
   broadcast(room,snapshot(room));
  }
 },250);
-const saveTimer=setInterval(()=>{saveStore().catch(e=>console.error("Autosave failed:",e.message));},20000);
+const saveTimer=setInterval(()=>{saveStore().catch(e=>console.error("Autosave failed:",e.message));},AUTOSAVE_INTERVAL_MS);
 const port=process.env.PORT||3000;
 async function startServer(){try{await loadStore();server.listen(port,"0.0.0.0",()=>console.log("Red Feather RTS listening on "+port+"; PostgreSQL autosave every 20 seconds."));}catch(e){console.error("PostgreSQL startup failed:",e.message);process.exit(1);}}
 startServer();
