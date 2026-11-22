@@ -174,6 +174,36 @@ function resetAllGameProgress(){
  }
  console.log("DEBUG administrator reset all accounts and realm progress.");
 }
+function grantResourcesToAllPlayers(amounts){
+ const resourceKeys=["gold","wood","food","stone"];
+ const targets=[];
+ const roomCodes=new Set([...Object.keys(store.rooms),...rooms.keys()]);
+ for(const code of roomCodes){
+  const liveRoom=rooms.get(code);
+  const saved=store.rooms[code];
+  const playerRecords=liveRoom
+   ? [...Object.values(liveRoom.state.players||{}),...Object.values(liveRoom.parkedPlayers||{})]
+   : [...Object.values(saved?.state?.players||{}),...Object.values(saved?.parkedPlayers||{})];
+  const seen=new Set();
+  for(const player of playerRecords){
+   if(!player||typeof player!=="object"||seen.has(player))continue;
+   seen.add(player);
+   const before={};
+   for(const key of resourceKeys){
+    before[key]=Number.isFinite(player[key])?player[key]:0;
+    player[key]=Math.min(Number.MAX_SAFE_INTEGER,before[key]+amounts[key]);
+   }
+   targets.push({player,before});
+  }
+ }
+ if(!targets.length)return {ok:false,count:0};
+ if(!saveStore()){
+  for(const target of targets)for(const key of resourceKeys)target.player[key]=target.before[key];
+  return {ok:false,count:0};
+ }
+ for(const room of rooms.values())broadcast(room,snapshot(room));
+ return {ok:true,count:targets.length};
+}
 function distance(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
 function distanceToWall(point,wall){
  const ax=wall.x,az=wall.z,bx=Number.isFinite(wall.x2)?wall.x2:wall.x,bz=Number.isFinite(wall.z2)?wall.z2:wall.z;
@@ -311,6 +341,19 @@ wss.on("connection",ws=>{
    if(!process.env.DEBUG_ADMIN_PASSWORD){send(ws,{type:"debug-admin",ok:false,message:"DEBUG_ADMIN_PASSWORD is not configured on the server."});return;}
    ws.debugAdminAuthed=verifyDebugAdminPassword(msg.password);
    send(ws,{type:"debug-admin",ok:ws.debugAdminAuthed,message:ws.debugAdminAuthed?"Admin access granted.":"Incorrect admin password."});
+   return;
+  }
+  if(msg.type==="debug-admin-grant-resources"){
+   if(ws.roomCode!=="DEBUG"||!ws.debugAdminAuthed){send(ws,{type:"debug-admin-resources",ok:false,message:"Admin authentication required."});return;}
+   const resources=msg.resources;
+   const keys=["gold","wood","food","stone"];
+   if(!resources||typeof resources!=="object"||Array.isArray(resources)||keys.some(key=>!Number.isSafeInteger(resources[key])||resources[key]<0||resources[key]>1000000000)||!keys.some(key=>resources[key]>0)){
+    send(ws,{type:"debug-admin-resources",ok:false,message:"Invalid amounts. Use whole numbers from 0 to 1,000,000,000, with at least one amount above zero."});return;
+   }
+   try{
+    const result=grantResourcesToAllPlayers(resources);
+    send(ws,{type:"debug-admin-resources",ok:result.ok,message:result.ok?"Added resources to "+result.count+" player kingdom(s) across all realms.":"No saved player kingdoms were found, or the server could not save the update."});
+   }catch(error){console.error("DEBUG resource grant failed:",error);send(ws,{type:"debug-admin-resources",ok:false,message:"Resource grant failed. Check server logs."});}
    return;
   }
   if(msg.type==="debug-admin-reset"){
