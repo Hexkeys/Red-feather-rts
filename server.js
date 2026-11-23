@@ -126,7 +126,15 @@ function roomFor(code) {
   return rooms.get(code);
 }
 function send(ws,data){if(ws.readyState===1)ws.send(JSON.stringify(data));}
-function broadcast(room,data){for(const p of room.players.values())send(p.ws,data);}
+function broadcast(room,data){
+ const payload=JSON.stringify(data);
+ for(const p of room.players.values()){
+  const ws=p.ws;
+  if(ws.readyState!==1)continue;
+  if(data?.type==="state"&&ws.bufferedAmount>262144)continue;
+  ws.send(payload);
+ }
+}
 function snapshot(room){return{type:"state",players:room.state.players,chat:room.state.chat.slice(-30)};}
 function notice(ws,text){send(ws,{type:"notice",text});}
 function verifyDebugAdminPassword(candidate){
@@ -498,18 +506,21 @@ wss.on("connection",ws=>{
  });
 });
 
-let last=Date.now();
+let last=Date.now(),lastSnapshotAt=0;
 setInterval(()=>{
  const now=Date.now(),dt=Math.min(.25,(now-last)/1000);last=now;
  for(const room of rooms.values()){
   const players=Object.values(room.state.players);
   for(const p of players){
    if(p.defeated)continue;
-   const farms=p.buildings.filter(b=>b.kind==="farm").length;
-   const lumberyards=p.buildings.filter(b=>b.kind==="lumberyard").length;
-   const quarries=p.buildings.filter(b=>b.kind==="quarry").length;
-   const mines=p.buildings.filter(b=>b.kind==="mine").length;
-   const markets=p.buildings.filter(b=>b.kind==="market").length;
+   let farms=0,lumberyards=0,quarries=0,mines=0,markets=0;
+   for(const b of p.buildings){
+    if(b.kind==="farm")farms++;
+    else if(b.kind==="lumberyard")lumberyards++;
+    else if(b.kind==="quarry")quarries++;
+    else if(b.kind==="mine")mines++;
+    else if(b.kind==="market")markets++;
+   }
    // No free passive income: production comes from the matching economy buildings.
    p.food+=farms*.55;p.wood+=lumberyards*.45;p.stone+=quarries*.3+mines*.75;p.gold+=markets*.3;
    if(p.units.length)p.food=Math.max(0,p.food-p.units.length*.018);
@@ -518,24 +529,31 @@ setInterval(()=>{
   const items=allItems(room);
   for(const p of players)if(!p.defeated)for(const u of p.units){
    const targetsInRange=[];
+   let target=null,targetDistance=Infinity;
    if(u.orderMode!=="move"&&u.kind!=="builder"&&u.damage>0){
     for(const enemy of items){
-     if(enemy.owner===p.id||enemy.hp<=0||!["unit","building"].includes(enemy.category))continue;
+     if(enemy.owner===p.id||enemy.hp<=0||(enemy.category!=="unit"&&enemy.category!=="building"))continue;
      if(u.attackZone&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)>u.attackZone.radius)continue;
      const dist=enemy.kind==="wall"?distanceToWall(u,enemy):distance(u,enemy);
-     if(dist<=u.range+(enemy.kind==="wall"?1.9:0))targetsInRange.push({item:enemy,dist});
+     if(dist<=u.range+(enemy.kind==="wall"?1.9:0)){
+      targetsInRange.push({item:enemy,dist});
+      if(dist<targetDistance){targetDistance=dist;target=enemy;}
+     }
     }
    }
-   targetsInRange.sort((a,b)=>a.dist-b.dist);
-   const target=targetsInRange[0]?.item||null;
    const manualDistance=distance(u,{x:Number.isFinite(u.tx)?u.tx:u.x,z:Number.isFinite(u.tz)?u.tz:u.z});
    const hasManualMove=manualDistance>1.2;
    let moveTarget=u.kind==="ship"&&u.path?.length?u.path[0]:{x:u.tx,z:u.tz};
    if(!hasManualMove&&!targetsInRange.length&&u.attackZone){
-    const zoneUnits=items.filter(enemy=>enemy.owner!==p.id&&enemy.hp>0&&enemy.category==="unit"&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)<=u.attackZone.radius);
-    const zoneTargets=zoneUnits.length?zoneUnits:items.filter(enemy=>enemy.owner!==p.id&&enemy.hp>0&&enemy.category==="building"&&Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)<=u.attackZone.radius);
-    zoneTargets.sort((a,b)=>distance(u,a)-distance(u,b));
-    if(zoneTargets.length)moveTarget={x:zoneTargets[0].x,z:zoneTargets[0].z};else moveTarget={x:u.x,z:u.z};
+    let nearestUnit=null,nearestUnitDistance=Infinity,nearestBuilding=null,nearestBuildingDistance=Infinity;
+    for(const enemy of items){
+     if(enemy.owner===p.id||enemy.hp<=0||Math.hypot(enemy.x-u.attackZone.x,enemy.z-u.attackZone.z)>u.attackZone.radius)continue;
+     const d=distance(u,enemy);
+     if(enemy.category==="unit"&&d<nearestUnitDistance){nearestUnit=enemy;nearestUnitDistance=d;}
+     else if(enemy.category==="building"&&d<nearestBuildingDistance){nearestBuilding=enemy;nearestBuildingDistance=d;}
+    }
+    const zoneTarget=nearestUnit||nearestBuilding;
+    if(zoneTarget)moveTarget={x:zoneTarget.x,z:zoneTarget.z};else moveTarget={x:u.x,z:u.z};
    }
    const dx=moveTarget.x-u.x,dz=moveTarget.z-u.z,d=Math.hypot(dx,dz);
    const approaching=!hasManualMove&&!targetsInRange.length&&u.attackZone&&Math.hypot(moveTarget.x-u.x,moveTarget.z-u.z)>.15;
@@ -575,11 +593,17 @@ setInterval(()=>{
   }
   const objectives=[{x:-1050,z:0},{x:0,z:-1050},{x:1050,z:0}];
   for(const o of objectives){
-   const presence=players.map(p=>({p,n:p.units.filter(u=>distance(u,o)<7).length})).filter(v=>v.n>0).sort((a,b)=>b.n-a.n);
-   if(presence.length&&(!presence[1]||presence[0].n>presence[1].n)){presence[0].p.score=(presence[0].p.score||0)+dt*presence[0].n*.35;presence[0].p.gold+=dt*.35;}
+   let leader=null,leaderCount=0,runnerUpCount=0;
+   for(const p of players){
+    let count=0;
+    for(const u of p.units)if(distance(u,o)<7)count++;
+    if(count>leaderCount){runnerUpCount=leaderCount;leader=p;leaderCount=count;}
+    else if(count>runnerUpCount)runnerUpCount=count;
+   }
+   if(leader&&leaderCount>runnerUpCount){leader.score=(leader.score||0)+dt*leaderCount*.35;leader.gold+=dt*.35;}
   }
   for(const p of players){p.units=p.units.filter(u=>u.hp>0);p.buildings=p.buildings.filter(b=>b.hp>0);const castle=p.buildings.find(b=>b.kind==="castle");if(!castle&&!p.defeated){p.defeated=true;p.units=[];p.buildings=[];broadcast(room,{type:"notice",text:p.name+" has been defeated — their castle has fallen."});}}
-  broadcast(room,snapshot(room));
+  if(now-lastSnapshotAt>=500){broadcast(room,snapshot(room));lastSnapshotAt=now;}
  }
 },250);
 const saveTimer=setInterval(()=>{saveStore().catch(e=>console.error("Autosave failed:",e.message));},AUTOSAVE_INTERVAL_MS);
