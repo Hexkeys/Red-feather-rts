@@ -427,6 +427,13 @@ function joinRealm(mode){
   if(m.type==='welcome'){if(joinTimer){clearTimeout(joinTimer);joinTimer=null;}setJoinStatus('');myId=m.id;myColor=m.color;document.querySelector('#realm').textContent='Realm: '+m.room+' · You: '+(m.name||name);document.querySelector('#debugAdminOpen').style.display=m.room==='DEBUG'?'inline-block':'none';document.querySelector('#join').style.display='none';document.querySelector('#commander').style.display='block';resetJoinButton();notice('Welcome back to the realm! Your saved kingdom has loaded.');}
   if(m.type==='debug-admin'){const status=document.querySelector('#debugadminstatus');status.textContent=m.message||'';if(m.ok&&!m.resetting){document.querySelector('#debugAdminActions').style.display='block';document.querySelector('#debugAdminPassword').value='';}if(m.resetting){document.querySelector('#debugAdminReset').disabled=true;status.textContent=m.message||'Resetting progress…';}}if(m.type==='debug-admin-resources'){document.querySelector('#debugadminstatus').textContent=m.message||'Resource update complete.';}
    if(m.type==='state'){sync(m);renderChat(m.chat||[]);}
+  if(m.type==='game-event'){
+   if(m.kind==='move'&&m.playerId===myId)notice('Movement order sent to the realm.');
+   if(m.kind==='damage'){
+    if(m.attackerId===myId)notice('Attack confirmed: '+Math.round(m.damage)+' damage dealt.');
+    if(m.targetOwner===myId)notice('Your '+String(m.targetKind||'unit')+' is taking damage!');
+   }
+  }
   if(m.type==='notice'){if(!myId){joinError=m.text||'The server could not join this realm.';setJoinStatus(joinError);}notice(m.text);}
  };
  ws.onerror=()=>{if(!myId){authFailed=true;joinError='Connection error. Check that the game server is running, then try again.';resetJoinButton(joinError);try{if(ws)ws.close();}catch{}}};
