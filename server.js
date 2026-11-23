@@ -484,11 +484,12 @@ wss.on("connection",ws=>{
     const tx=clamp(msg.x+ox,-2390,2390),tz=clamp(msg.z+oz,-1790,1790);
     if(unit.kind==="ship"){const route=findWaterRoute(unit, {x:tx,z:tz});if(!route){notice(ws,"No clear water route to that destination. Choose a closer point at sea.");return;}unit.path=route;}else delete unit.path;
     unit.tx=tx;unit.tz=tz;unit.orderMode=mode;});
+   broadcast(room,{type:"game-event",kind:"move",playerId,unitIds:selected.map(u=>u.id),x:msg.x,z:msg.z,mode});
    broadcast(room,snapshot(room));return;
   }
   if(msg.type==="move"){
    const unit=me.units.find(u=>u.id===msg.id);
-   if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){delete unit.attackZone;unit.orderMode="move";if(unit.kind==="ship"){if(terrainAt(msg.x,msg.z)!=="sea"){notice(ws,"Ships can only sail in open water.");return;}const route=findWaterRoute(unit,{x:msg.x,z:msg.z});if(!route){notice(ws,"No clear water route to that destination.");return;}unit.path=route;}unit.tx=clamp(msg.x,-2390,2390);unit.tz=clamp(msg.z,-1790,1790);unit.orderMode="move";return;}
+   if(unit&&Number.isFinite(msg.x)&&Number.isFinite(msg.z)){delete unit.attackZone;unit.orderMode="move";if(unit.kind==="ship"){if(terrainAt(msg.x,msg.z)!=="sea"){notice(ws,"Ships can only sail in open water.");return;}const route=findWaterRoute(unit,{x:msg.x,z:msg.z});if(!route){notice(ws,"No clear water route to that destination.");return;}unit.path=route;}unit.tx=clamp(msg.x,-2390,2390);unit.tz=clamp(msg.z,-1790,1790);unit.orderMode="move";broadcast(room,{type:"game-event",kind:"move",playerId,unitIds:[unit.id],x:unit.tx,z:unit.tz,mode:"move"});return;}
   }
  });
  ws.on("close",async()=>{
@@ -568,7 +569,11 @@ setInterval(()=>{
     if(u.attackCooldown<=0){
      for(const entry of targetsInRange){
       const enemy=entry.item,owner=room.state.players[enemy.owner],list=enemy.category==="unit"?owner?.units:owner?.buildings,actual=list?.find(x=>x.id===enemy.id);
-      if(actual)actual.hp-=u.damage*terrainAttack(u,actual)*structureDamage(u,enemy)*terrainCover(actual);
+      if(actual){
+       const dealt=u.damage*terrainAttack(u,actual)*structureDamage(u,enemy)*terrainCover(actual);
+       actual.hp-=dealt;
+       broadcast(room,{type:"game-event",kind:"damage",attackerId:p.id,targetOwner:enemy.owner,targetId:enemy.id,targetKind:enemy.kind,damage:dealt,hp:Math.max(0,actual.hp)});
+      }
      }
      u.attackCooldown=u.attackRate||1.2;u.attackPulse=(u.attackPulse||0)+1;u.attackTargetId=target.id;
     }
